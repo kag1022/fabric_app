@@ -12,6 +12,13 @@ import Box from '@mui/material/Box';
 import CameraView from './components/CameraView';
 import FabricGallery from './components/FabricGallery';
 import PatchworkLayout from './components/PatchworkLayout';
+import { ColorAnalysisResult } from './utils/colorUtils';
+
+// ギャラリーで管理するアイテムの型定義をエクスポート
+export interface FabricItem extends ColorAnalysisResult {
+  id: string;
+  imageDataUrl: string;
+}
 
 // アプリケーションのダークテーマを定義
 const darkTheme = createTheme({
@@ -22,9 +29,26 @@ const darkTheme = createTheme({
 
 function App() {
   const [selectedTab, setSelectedTab] = useState(0);
+  const [fabricItems, setFabricItems] = useState<FabricItem[]>([]);
 
   const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
     setSelectedTab(newValue);
+  };
+
+  // ギャラリーに新しい布地を追加し、ギャラリータブに切り替える関数
+  const handleAddFabric = (result: ColorAnalysisResult, imageDataUrl: string) => {
+    const newItem: FabricItem = {
+      id: new Date().toISOString() + Math.random(), // ユニークなIDを生成
+      ...result,
+      imageDataUrl,
+    };
+    setFabricItems(prevItems => [newItem, ...prevItems]); // 新しいアイテムを先頭に追加
+    setSelectedTab(1); // ギャラリータブに自動で切り替え
+  };
+
+  // ギャラリーから布地を削除する関数
+  const handleDeleteFabric = (id: string) => {
+    setFabricItems(prevItems => prevItems.filter(item => item.id !== id));
   };
 
   return (
@@ -46,9 +70,9 @@ function App() {
           </Tabs>
         </Box>
         <Box sx={{ p: 3 }}>
-          {selectedTab === 0 && <CameraView />}
-          {selectedTab === 1 && <FabricGallery />}
-          {selectedTab === 2 && <PatchworkLayout />}
+          {selectedTab === 0 && <CameraView onAddFabric={handleAddFabric} />}
+          {selectedTab === 1 && <FabricGallery items={fabricItems} onDeleteItem={handleDeleteFabric} />}
+          {selectedTab === 2 && <PatchworkLayout items={fabricItems} />}
         </Box>
       </Container>
     </ThemeProvider>

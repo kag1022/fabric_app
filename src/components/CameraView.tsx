@@ -3,7 +3,11 @@ import { Box, Button, Typography, Card, CardMedia, CardContent, CardActions } fr
 import ColorAnalyzer from './ColorAnalyzer';
 import { ColorAnalysisResult } from '../utils/colorUtils';
 
-const CameraView: React.FC = () => {
+interface CameraViewProps {
+  onAddFabric: (result: ColorAnalysisResult, imageDataUrl: string) => void;
+}
+
+const CameraView: React.FC<CameraViewProps> = ({ onAddFabric }) => {
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -69,9 +73,9 @@ const CameraView: React.FC = () => {
 
   // ギャラリーに追加する関数
   const handleAddToGallery = (result: ColorAnalysisResult) => {
-    console.log('Added to gallery:', result);
-    // TODO: ここで実際にギャラリーの状態を更新する
-    startCamera();
+    if (capturedImage) {
+      onAddFabric(result, capturedImage);
+    }
   };
 
   return (
