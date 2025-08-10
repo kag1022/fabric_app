@@ -8,6 +8,7 @@ import Container from '@mui/material/Container';
 import Tabs from '@mui/material/Tabs';
 import Tab from '@mui/material/Tab';
 import Box from '@mui/material/Box';
+import { Analytics } from "@vercel/analytics/react"
 
 import CameraView from './components/CameraView';
 import FabricGallery from './components/FabricGallery';
