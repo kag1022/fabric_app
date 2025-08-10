@@ -37,26 +37,51 @@ export function rgbToHsv(r: number, g: number, b: number): { h: number; s: numbe
   return { h: h * 360, s: s, v: v };
 }
 
-const HUE_CATEGORIES: { [key: number]: string } = {
-    1: '赤', 2: '赤橙', 3: '橙', 4: '黄橙', 5: '橙黄', 6: '黄',
-    7: '黄緑', 8: '緑黄', 9: '若草', 10: '緑', 11: '青緑', 12: '緑青',
-    13: 'シアン', 14: '空色', 15: '水色', 16: '青', 17: '青藍', 18: '藍',
-    19: '紺青', 20: '青紫', 21: '紫', 22: '赤紫', 23: 'マゼンタ', 24: '紅',
-    25: '赤', 26: '赤橙', 27: '橙', 28: '黄橙', 29: '橙黄', 30: '黄',
-    31: '黄緑', 32: '緑黄', 33: '若草', 34: '緑', 35: '青緑', 36: '緑青'
+// 色相を8分類に変更
+export const HUE_CATEGORIES: { [key: number]: string } = {
+    1: '赤',       // Red
+    2: 'オレンジ', // Orange
+    3: '黄',       // Yellow
+    4: '緑',       // Green
+    5: 'シアン',   // Cyan
+    6: '青',       // Blue
+    7: '紫',   // Purple
+    8: 'マゼンタ'  // Magenta
 };
 
+
+
 /**
- * 色相(H)を36カテゴリに分類する
+ * 色相(H)を8カテゴリに分類する
  * @param h - Hue (0-360)
- * @returns カテゴリ(1-36)と色名
+ * @returns カテゴリ(1-8)と色名
  */
 export function classifyHue(h: number): { category: number; name: string } {
-  if (h >= 355 || h < 5) return { category: 1, name: '赤' }; // 赤 (Red) - Special case for wraparound
-  const category = Math.floor((h - 5) / 10) + 2;
+  const degree = h;
+  let category: number;
+
+  if (degree >= 337.5 || degree < 22.5) {
+    category = 1; // 赤
+  } else if (degree < 67.5) {
+    category = 2; // オレンジ
+  } else if (degree < 112.5) {
+    category = 3; // 黄
+  } else if (degree < 157.5) {
+    category = 4; // 緑
+  } else if (degree < 202.5) {
+    category = 5; // シアン
+  } else if (degree < 247.5) {
+    category = 6; // 青
+  } else if (degree < 292.5) {
+    category = 7; // 紫
+  } else {
+    category = 8; // マゼンタ
+  }
+
   const name = HUE_CATEGORIES[category] || '不明';
   return { category, name };
 }
+
 
 /**
  * 明度(V)を3段階に分類する

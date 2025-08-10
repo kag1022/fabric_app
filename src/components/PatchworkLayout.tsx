@@ -1,55 +1,50 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   DndContext,
-  closestCenter,
-  KeyboardSensor,
-  PointerSensor,
+  DragEndEvent,
+  DragOverlay,
   useSensor,
   useSensors,
-  DragEndEvent,
+  PointerSensor,
+  DragStartEvent,
 } from '@dnd-kit/core';
-import {
-  arrayMove,
-  SortableContext,
-  sortableKeyboardCoordinates,
-  rectSortingStrategy,
-} from '@dnd-kit/sortable';
-import { Box, Typography } from '@mui/material';
+import { Box, Typography, Slider, Grid } from '@mui/material';
 import { FabricItem } from '../App';
-import { SortableFabricItem } from './SortableFabricItem';
+import PatchworkGrid from './PatchworkGrid';
+import { DraggableFabricItem } from './DraggableFabricItem';
 
 interface PatchworkLayoutProps {
   items: FabricItem[];
 }
 
 const PatchworkLayout: React.FC<PatchworkLayoutProps> = ({ items }) => {
-  const [layoutItems, setLayoutItems] = useState<FabricItem[]>([]);
+  const [gridSize, setGridSize] = useState(8);
+  const [placedItems, setPlacedItems] = useState<{ [key: string]: FabricItem }>({});
+  const [activeItem, setActiveItem] = useState<FabricItem | null>(null);
+  const sensors = useSensors(useSensor(PointerSensor));
 
-  // Appコンポーネントからのアイテムリストが変更されたら、レイアウトのアイテムも同期する
-  useEffect(() => {
-    setLayoutItems(items);
-  }, [items]);
-
-  // マウスやタッチ、キーボードでの操作を検知するためのセンサーを設定
-  const sensors = useSensors(
-    useSensor(PointerSensor),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    })
-  );
-
-  // ドラッグ操作が終了したときに呼ばれる関数
-  const handleDragEnd = (event: DragEndEvent) => {
-    const { active, over } = event;
-
-    if (over && active.id !== over.id) {
-      setLayoutItems((currentItems) => {
-        const oldIndex = currentItems.findIndex((item) => item.id === active.id);
-        const newIndex = currentItems.findIndex((item) => item.id === over.id);
-        // 配列内のアイテムを移動して新しい配列を返す
-        return arrayMove(currentItems, oldIndex, newIndex);
-      });
+  const handleDragStart = (event: DragStartEvent) => {
+    if (event.active.data.current) {
+      setActiveItem(event.active.data.current.item as FabricItem);
     }
+  };
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    setActiveItem(null);
+    const { over, active } = event;
+    if (over && over.id.toString().startsWith('block-') && active.data.current) {
+      const itemToPlace = active.data.current.item as FabricItem;
+      if (itemToPlace) {
+        setPlacedItems(prev => ({
+          ...prev,
+          [over.id.toString()]: itemToPlace,
+        }));
+      }
+    }
+  };
+
+  const handleSliderChange = (event: Event, newValue: number | number[]) => {
+    setGridSize(newValue as number);
   };
 
   if (items.length === 0) {
@@ -61,36 +56,44 @@ const PatchworkLayout: React.FC<PatchworkLayoutProps> = ({ items }) => {
   }
 
   return (
-    <Box>
-      <Typography variant="h5" gutterBottom>
-        パッチワークレイアウト
-      </Typography>
-      <Typography variant="body1" color="text.secondary" sx={{ mb: 3 }}>
-        布地をドラッグ＆ドロップして、自由に配置を試してみましょう。
-      </Typography>
-      <DndContext
-        sensors={sensors}
-        collisionDetection={closestCenter}
-        onDragEnd={handleDragEnd}
-      >
-        <SortableContext items={layoutItems.map(item => item.id)} strategy={rectSortingStrategy}>
-          <Box sx={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))',
-            gap: 2,
-            p: 2,
-            border: '1px dashed grey',
-            borderRadius: 2,
-            minHeight: 300,
-            backgroundColor: 'action.hover'
-          }}>
-            {layoutItems.map(item => (
-              <SortableFabricItem key={item.id} item={item} />
+    <DndContext onDragStart={handleDragStart} onDragEnd={handleDragEnd} sensors={sensors}>
+      <Grid container spacing={4}>
+        <Grid item xs={12} md={3}>
+          <Typography variant="h5" gutterBottom>
+            布地リスト
+          </Typography>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, maxHeight: '60vh', overflowY: 'auto' }}>
+            {items.map(item => (
+              <DraggableFabricItem key={item.id} item={item} />
             ))}
           </Box>
-        </SortableContext>
-      </DndContext>
-    </Box>
+        </Grid>
+        <Grid item xs={12} md={9}>
+          <Typography variant="h5" gutterBottom>
+            パッチワークレイアウト
+          </Typography>
+          <Typography variant="body1" color="text.secondary" sx={{ mb: 3 }}>
+            左のリストから布地をドラッグ＆ドロップして、自由に配置を試してみましょう。
+          </Typography>
+          <Box sx={{ mb: 2 }}>
+            <Typography gutterBottom>グリッドサイズ: {gridSize}x{gridSize}</Typography>
+            <Slider
+              value={gridSize}
+              onChange={handleSliderChange}
+              step={4}
+              marks
+              min={4}
+              max={16}
+              valueLabelDisplay="auto"
+            />
+          </Box>
+          <PatchworkGrid gridSize={gridSize} placedItems={placedItems} />
+        </Grid>
+      </Grid>
+      <DragOverlay>
+        {activeItem ? <DraggableFabricItem item={activeItem} /> : null}
+      </DragOverlay>
+    </DndContext>
   );
 };
 

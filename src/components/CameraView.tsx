@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Box, Button, Typography, Card, CardMedia, CardContent, CardActions } from '@mui/material';
 import ColorAnalyzer from './ColorAnalyzer';
 import { ColorAnalysisResult } from '../utils/colorUtils';
+import ColorGroupTable from './ColorGroupTable'; // 追加
 
 interface CameraViewProps {
   onAddFabric: (result: ColorAnalysisResult, imageDataUrl: string) => void;
@@ -83,6 +84,7 @@ const CameraView: React.FC<CameraViewProps> = ({ onAddFabric }) => {
       {!capturedImage ? (
         <>
           <Typography variant="h5">1. 布地を撮影する</Typography>
+          <ColorGroupTable /> {/* 追加 */}
           <Card sx={{ maxWidth: 600, width: '100%' }}>
             <CardContent>
               {error && <Typography color="error" align="center" sx={{ mb: 2 }}>{error}</Typography>}
