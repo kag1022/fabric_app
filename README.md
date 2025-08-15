@@ -1,46 +1,118 @@
-# Create React App を始めましょう
+# Fabric Color Classifier
 
-このプロジェクトは [Create React App](https://github.com/facebook/create-react-app) を使って作成されました。
+このアプリケーションは、デバイスのカメラで布地の写真を撮影し、その色を自動で分析・分類して、パーソナルなデジタルギャラリーに保存するためのWebアプリケーションです。ReactとFirebaseを使用して構築されており、シンプルさとアクセシビリティを重視して設計されています。
 
-## 利用可能なスクリプト
 
-プロジェクトのディレクトリで、以下のコマンドを実行できます。
 
-### `npm start`
+## 主な機能
 
-アプリを開発モードで実行します。
-ブラウザで [http://localhost:3000](http://localhost:3000) を開いて表示を確認してください。
+* **カメラ撮影機能**: デバイスのカメラを直接使用して布地の画像をキャプチャします。
+* **自動色分析**: 撮影した画像の中央部分の平均色を算出し、人間の知覚に近い形で「色相」「彩度」「明度」を分析します。
+* **自動グループ分け**: 分析結果に基づき、「C（色相）-（明度）」または「N（無彩色）-（明度）」の形式で布地を自動的にグループ分けします。
+* **Firebaseバックエンド**: 撮影した画像データ、分析結果はすべてFirebaseに安全に保存されます。
+    * **Authentication**: 匿名認証により、ユーザーごとにデータを管理します。
+    * **Cloud Firestore**: 色分析結果や画像のURLなどのメタデータを保存します。
+    * **Cloud Storage**: 撮影した画像ファイル本体を保存します。
+* **ストレージ自動管理機能**: Cloud Functionsを利用し、ユーザー一人あたりのストレージ使用量が3GBを超えた場合、作成日時の古いものから自動的に削除してコストを管理します。
+* **アクセシビリティ対応**: セマンティックなHTML、適切なARIA属性、キーボード操作への配慮など、アクセシビリティを考慮したUI設計を行っています。
 
-ファイルを編集すると、ページは自動的にリロードされます。
-コンソールには、構文エラー（lint error）も表示されます。
+## 🛠️ 技術スタック
 
-### `npm test`
+#### フロントエンド
+* **React** (with TypeScript)
+* **Create React App**
+* **Material-UI (MUI)**: UIコンポーネントライブラリ
 
-対話式のウォッチモードでテストランナーを起動します。
-詳細は [テストの実行](https://facebook.github.io/create-react-app/docs/running-tests) に関するセクションをご覧ください。
+#### バックエンド & デプロイ
+* **Firebase**
+    * Authentication
+    * Cloud Firestore
+    * Cloud Storage
+    * Cloud Functions (for TypeScript)
+* **Vercel**: フロントエンドのホスティング
 
-### `npm run build`
+---
 
-本番用にアプリを `build` フォルダにビルドします。
-Reactが本番モードで正しくバンドルされ、最高のパフォーマンスを発揮するようにビルドが最適化されます。
+## セットアップとローカルでの実行方法
 
-ビルドは圧縮され、ファイル名にはハッシュが含まれます。
-これでアプリをデプロイする準備ができました！
+このプロジェクトをローカル環境でセットアップし、実行するための手順です。
 
-詳細は [デプロイ](https://facebook.github.io/create-react-app/docs/deployment) に関するセクションをご覧ください。
+### 前提条件
+* Node.js (v14以上)
+* npm
+* Firebase アカウント
+* Google Cloud アカウント（Firebaseプロジェクトに紐づくもの）
 
-### `npm run eject`
+### 1. プロジェクトのクローン
+```bash
+git clone [https://github.com/YOUR_USERNAME/YOUR_REPOSITORY.git](https://github.com/YOUR_USERNAME/YOUR_REPOSITORY.git)
+cd YOUR_REPOSITORY
+```
 
-**注意: この操作は一方通行です。一度 `eject` を実行すると、元に戻すことはできません！**
+### 2. Firebase プロジェクトの準備
+1.  [Firebaseコンソール](https://console.firebase.google.com/)で新しいプロジェクトを作成します。
+2.  プロジェクト設定から、ウェブアプリを登録し、`firebaseConfig`オブジェクトを取得します。
+3.  以下のFirebaseサービスを有効化してください:
+    * **Authentication**: 匿名認証
+    * **Cloud Firestore**: データベースを作成（テストモードで開始）
+    * **Cloud Storage**: ストレージバケットを作成
 
-ビルドツールや設定に満足できない場合は、いつでも `eject` を実行できます。このコマンドは、プロジェクトから単一のビルド依存関係を削除します。
+### 3. 環境変数の設定
+プロジェクトの**ルートディレクトリ**（`package.json`と同じ階層）に`.env.local`という名前のファイルを作成し、Firebaseから取得した`firebaseConfig`の値を入力します。
 
-その代わり、すべての設定ファイルと推移的な依存関係（webpack, Babel, ESLintなど）がプロジェクトに直接コピーされるため、それらを完全に制御できるようになります。`eject` を除くすべてのコマンドは引き続き機能しますが、コピーされたスクリプトを指すようになるため、調整が可能です。この時点からは、ご自身で管理することになります。
+**.env.local**
+```env
+REACT_APP_API_KEY="YOUR_API_KEY"
+REACT_APP_AUTH_DOMAIN="YOUR_AUTH_DOMAIN"
+REACT_APP_PROJECT_ID="YOUR_PROJECT_ID"
+REACT_APP_STORAGE_BUCKET="YOUR_STORAGE_BUCKET"
+REACT_APP_MESSAGING_SENDER_ID="YOUR_MESSAGING_SENDER_ID"
+REACT_APP_APP_ID="YOUR_APP_ID"
+REACT_APP_MEASUREMENT_ID="YOUR_MEASUREMENT_ID"
+```
+**注意**: このファイルは`.gitignore`に含まれているため、GitHubには公開されません。
 
-`eject` を使う必要は必ずしもありません。厳選された機能セットは小規模から中規模のデプロイに適しており、この機能を使う義務を感じる必要はありません。しかし、準備ができたときにツールをカスタマイズできないのでは役に立たないことも理解しています。
+### 4. 依存関係のインストール
+フロントエンドとバックエンド（Cloud Functions）の両方で、必要なパッケージをインストールします。
 
-## さらに学ぶ
+```bash
+# 1. フロントエンド（Reactアプリ）の依存関係をインストール
+npm install
 
-より詳しい情報は [Create React App のドキュメント](https://facebook.github.io/create-react-app/docs/getting-started) をご覧ください。
+# 2. バックエンド（Cloud Functions）の依存関係をインストール
+cd functions
+npm install
+cd ..
+```
 
-Reactを学ぶには、[React のドキュメント](https://reactjs.org/) を確認してください。
+### 5. ローカルサーバーの起動
+以下のコマンドで、Reactアプリケーションがローカルで起動します。
+```bash
+npm start
+```
+ブラウザで `http://localhost:3000` が開きます。
+
+---
+
+## デプロイ方法
+
+このアプリケーションは、フロントエンドとバックエンドを別々にデプロイする必要があります。
+
+### 1. バックエンド（Cloud Functions）のデプロイ
+ストレージ管理機能（`manageStorageUsage`）をFirebaseにデプロイします。
+
+```bash
+# functionsディレクトリに移動
+cd functions
+
+# Firebaseにデプロイ
+npm run deploy -- --only functions
+```
+**注意**: 初回デプロイ時には、権限に関するエラーが発生することがあります。その場合は、エラーメッセージに表示される`gcloud`コマンドを[Google Cloud Shell](https://console.cloud.google.com/)で実行してください。
+
+### 2. フロントエンド（React App）のデプロイ
+VercelとGitHubリポジトリを連携させることで、`git push`をトリガーに自動でデプロイが実行されます。
+
+1.  **Vercelプロジェクトの作成**: [Vercel](https://vercel.com/)で、このプロジェクトのGitHubリポジトリをインポートして新しいプロジェクトを作成します。
+2.  **環境変数の設定**: Vercelのプロジェクト設定画面（Settings > Environment Variables）で、`.env.local`に設定したものと**全く同じキーと値**を登録します。
+3.  **デプロイ**: `main`ブランチなどに`git push`すると、自動的にデプロイが開始されます。
