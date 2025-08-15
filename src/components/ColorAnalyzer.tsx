@@ -41,7 +41,7 @@ const ColorAnalyzer: React.FC<ColorAnalyzerProps> = ({ imageDataUrl, onAddToGall
       const data = imageData.data;
 
       const colorCounts: { [key: string]: { r: number; g: number; b: number; count: number } } = {};
-      const step = 4 * 5; 
+      const step = 4 * 5;
       for (let i = 0; i < data.length; i += step) {
         const r = data[i];
         const g = data[i + 1];
@@ -103,13 +103,13 @@ const ColorAnalyzer: React.FC<ColorAnalyzerProps> = ({ imageDataUrl, onAddToGall
 
   return (
     <Box sx={{ mt: 2 }}>
-      <Typography variant="h5" gutterBottom>2. 色の分析結果</Typography>
+      <Typography variant="h5" component="h2" gutterBottom>2. 色の分析結果</Typography> {/* 見出しレベルを調整 */}
       <Card>
         <CardContent>
           <img
             ref={imageRef}
             src={imageDataUrl}
-            alt="Captured Fabric"
+            alt="分析対象の布地画像" // altをより具体的に
             style={{ display: 'none' }}
             onLoad={analyzeColor}
             onError={() => {
@@ -117,25 +117,34 @@ const ColorAnalyzer: React.FC<ColorAnalyzerProps> = ({ imageDataUrl, onAddToGall
               setIsLoading(false);
             }}
           />
-          {isLoading && (
-            <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 200 }}>
-              <CircularProgress />
-              <Typography sx={{ ml: 2 }}>分析中...</Typography>
-            </Box>
-          )}
-          {error && <Typography color="error">{error}</Typography>}
+          {/* 分析中とエラーメッセージをスクリーンリーダーが読み上げるようにする */}
+          <Box aria-live="polite">
+            {isLoading && (
+              <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 200 }}>
+                <CircularProgress />
+                <Typography sx={{ ml: 2 }}>分析中...</Typography>
+              </Box>
+            )}
+            {error && <Typography color="error" role="alert">{error}</Typography>}
+          </Box>
+
           {analysisResult && !isLoading && (
+            // ... (Grid container)
+            // ... (Grid items)
             <Grid container spacing={2}>
               <Grid item xs={12} md={6}>
-                <Paper sx={{
-                  backgroundColor: `rgb(${analysisResult.dominantRgb.r}, ${analysisResult.dominantRgb.g}, ${analysisResult.dominantRgb.b})`,
-                  width: '100%',
-                  height: 200,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  border: '1px solid #fff'
-                }}>
+                <Paper
+                  aria-label={`主要色: ${analysisResult.group}`} // ラベルを追加
+                  sx={{
+                    backgroundColor: `rgb(${analysisResult.dominantRgb.r}, ${analysisResult.dominantRgb.g}, ${analysisResult.dominantRgb.b})`,
+                    width: '100%',
+                    height: 200,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    border: '1px solid #fff'
+                  }}
+                >
                   <Typography variant="h6" sx={{ color: analysisResult.valueInfo.name === '暗' ? '#fff' : '#000' }}>
                     主要色
                   </Typography>

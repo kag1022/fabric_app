@@ -1,10 +1,10 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { Box, Grid, Card, CardMedia, CardContent, Typography, Paper, CardActions, IconButton, FormControl, InputLabel, Select, MenuItem, CircularProgress } from '@mui/material';
+import React, { useState, useEffect } from 'react';
+import { Box, Grid, Card, CardMedia, Typography, CardContent, Paper, CardActions, IconButton, CircularProgress } from '@mui/material'; // 👈 不要なインポートを削除
 import DeleteIcon from '@mui/icons-material/Delete';
-import { db, storage } from '../firebase'; // Firebaseインスタンスをインポート
+import { db, storage } from '../firebase';
 import { collection, query, onSnapshot, orderBy, doc, deleteDoc } from 'firebase/firestore';
 import { ref, deleteObject } from 'firebase/storage';
-import { FabricItem } from '../App'; // App.tsxから型をインポート
+import { FabricItem } from '../App';
 
 interface FabricGalleryProps {
   userId: string;
@@ -13,13 +13,11 @@ interface FabricGalleryProps {
 const FabricGallery: React.FC<FabricGalleryProps> = ({ userId }) => {
   const [items, setItems] = useState<FabricItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [sortOrder, setSortOrder] = useState('default'); // 'default' or 'group'
 
   useEffect(() => {
     if (!userId) return;
 
     setLoading(true);
-    // Firestoreからデータをリアルタイムで取得
     const q = query(collection(db, "users", userId, "fabrics"), orderBy("createdAt", "desc"));
     const unsubscribe = onSnapshot(q, (querySnapshot) => {
       const fabricsData: FabricItem[] = [];
@@ -30,29 +28,18 @@ const FabricGallery: React.FC<FabricGalleryProps> = ({ userId }) => {
       setLoading(false);
     });
 
-    // クリーンアップ関数
     return () => unsubscribe();
   }, [userId]);
 
-  const sortedItems = useMemo(() => {
-    const newItems = [...items];
-    if (sortOrder === 'group') {
-      newItems.sort((a, b) => a.group.localeCompare(b.group, 'ja'));
-    }
-    return newItems;
-  }, [items, sortOrder]);
-
+  // useMemoは不要になったので削除
+  
   const handleDeleteItem = async (item: FabricItem) => {
-    if (!userId) return;
+    if (!userId || !item.imageDataUrl) return;
 
     try {
-      // 1. Firestoreからドキュメントを削除
       await deleteDoc(doc(db, "users", userId, "fabrics", item.id));
-
-      // 2. Firebase Storageから画像ファイルを削除
       const imageRef = ref(storage, item.imageDataUrl);
       await deleteObject(imageRef);
-
     } catch (error) {
       console.error("削除中にエラーが発生しました: ", error);
     }
@@ -80,29 +67,17 @@ const FabricGallery: React.FC<FabricGalleryProps> = ({ userId }) => {
         <Typography variant="h5" component="h2">
           布地ギャラリー
         </Typography>
-        <FormControl size="small" sx={{ minWidth: 120 }}>
-          <InputLabel id="sort-by-label">並び替え</InputLabel>
-          <Select
-            labelId="sort-by-label"
-            id="sort-by-select"
-            value={sortOrder}
-            label="並び替え"
-            onChange={(e) => setSortOrder(e.target.value)}
-          >
-            <MenuItem value="default">追加順</MenuItem>
-            <MenuItem value="group">グループ順</MenuItem>
-          </Select>
-        </FormControl>
+        {/* 並び替えUIを削除 */}
       </Box>
       <Grid container spacing={3}>
-        {sortedItems.map((item) => (
+        {items.map((item) => ( // sortedItems を items に変更
           <Grid item key={item.id} xs={12} sm={6} md={4} lg={3}>
             <Card sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
               <CardMedia
                 component="img"
                 height="160"
                 image={item.imageDataUrl}
-                alt="Fabric Image"
+                alt={`布地グループ ${item.group} の画像`}
               />
               <CardContent sx={{ flexGrow: 1 }}>
                 <Typography gutterBottom variant="h6" component="div">
@@ -118,6 +93,7 @@ const FabricGallery: React.FC<FabricGalleryProps> = ({ userId }) => {
                       border: '1px solid rgba(255, 255, 255, 0.3)',
                       borderRadius: '50%',
                     }}
+                    aria-label={`主要色: ${item.group}`}
                   />
                   <Box>
                     <Typography variant="body2" color="text.secondary">
@@ -130,7 +106,7 @@ const FabricGallery: React.FC<FabricGalleryProps> = ({ userId }) => {
                 </Box>
               </CardContent>
               <CardActions sx={{ justifyContent: 'flex-end', pt: 0 }}>
-                <IconButton aria-label="delete" onClick={() => handleDeleteItem(item)}>
+                <IconButton aria-label={`グループ ${item.group} の布地を削除`} onClick={() => handleDeleteItem(item)}>
                   <DeleteIcon />
                 </IconButton>
               </CardActions>

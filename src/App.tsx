@@ -8,7 +8,7 @@ import Container from '@mui/material/Container';
 import Tabs from '@mui/material/Tabs';
 import Tab from '@mui/material/Tab';
 import Box from '@mui/material/Box';
-import { Analytics } from "@vercel/analytics/react";
+
 
 // Firebase
 import { auth, db, storage } from './firebase';
@@ -66,8 +66,6 @@ function App() {
     }
 
     try {
-      // 1. 画像をBlobに変換
-      const blob = await (await fetch(imageDataUrl)).blob();
 
       // 2. Firebase Storageにアップロード
       const storageRef = ref(storage, `fabrics/${user.uid}/${new Date().toISOString()}.jpg`);
