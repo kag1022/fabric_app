@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
 import AppBar from '@mui/material/AppBar';
@@ -8,20 +8,27 @@ import Container from '@mui/material/Container';
 import Tabs from '@mui/material/Tabs';
 import Tab from '@mui/material/Tab';
 import Box from '@mui/material/Box';
-import { Analytics } from "@vercel/analytics/react"
+import { Analytics } from "@vercel/analytics/react";
+
+// Firebase
+import { auth, db, storage } from './firebase';
+import { onAuthStateChanged, signInAnonymously, User } from 'firebase/auth';
+import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { ref, uploadString, getDownloadURL } from 'firebase/storage';
+
 
 import CameraView from './components/CameraView';
 import FabricGallery from './components/FabricGallery';
-import PatchworkLayout from './components/PatchworkLayout';
 import { ColorAnalysisResult } from './utils/colorUtils';
 
 // ギャラリーで管理するアイテムの型定義をエクスポート
+// (Firestoreに保存するデータ構造に合わせて調整も可能)
 export interface FabricItem extends ColorAnalysisResult {
-  id: string;
-  imageDataUrl: string;
+  id: string; // FirestoreのドキュメントID
+  imageDataUrl: string; // StorageのURL
+  createdAt: any; // 作成日時
 }
 
-// アプリケーションのダークテーマを定義
 const darkTheme = createTheme({
   palette: {
     mode: 'dark',
@@ -30,27 +37,62 @@ const darkTheme = createTheme({
 
 function App() {
   const [selectedTab, setSelectedTab] = useState(0);
-  const [fabricItems, setFabricItems] = useState<FabricItem[]>([]);
+  const [user, setUser] = useState<User | null>(null);
+
+  useEffect(() => {
+    // 匿名認証でサインイン
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      if (currentUser) {
+        setUser(currentUser);
+      } else {
+        signInAnonymously(auth).catch((error) => {
+          console.error("Anonymous sign-in failed:", error);
+        });
+      }
+    });
+    return () => unsubscribe();
+  }, []);
+
 
   const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
     setSelectedTab(newValue);
   };
 
-  // ギャラリーに新しい布地を追加し、ギャラリータブに切り替える関数
-  const handleAddFabric = (result: ColorAnalysisResult, imageDataUrl: string) => {
-    const newItem: FabricItem = {
-      id: new Date().toISOString() + Math.random(), // ユニークなIDを生成
-      ...result,
-      imageDataUrl,
-    };
-    setFabricItems(prevItems => [newItem, ...prevItems]); // 新しいアイテムを先頭に追加
-    setSelectedTab(1); // ギャラリータブに自動で切り替え
+  // ギャラリーに新しい布地を追加する関数 (Firebase連携版)
+  const handleAddFabric = async (result: ColorAnalysisResult, imageDataUrl: string) => {
+    if (!user) {
+      console.error("ユーザーが認証されていません。");
+      return;
+    }
+
+    try {
+      // 1. 画像をBlobに変換
+      const blob = await (await fetch(imageDataUrl)).blob();
+
+      // 2. Firebase Storageにアップロード
+      const storageRef = ref(storage, `fabrics/${user.uid}/${new Date().toISOString()}.jpg`);
+      await uploadString(storageRef, imageDataUrl, 'data_url');
+
+
+      // 3. ダウンロードURLを取得
+      const downloadURL = await getDownloadURL(storageRef);
+
+      // 4. Cloud Firestoreにデータを保存
+      const docRef = await addDoc(collection(db, "users", user.uid, "fabrics"), {
+        ...result,
+        imageDataUrl: downloadURL,
+        createdAt: serverTimestamp(),
+      });
+
+      console.log("ドキュメントが追加されました。ID: ", docRef.id);
+
+      // ギャラリータブに自動で切り替え
+      setSelectedTab(1);
+    } catch (error) {
+      console.error("Firebaseへの保存中にエラーが発生しました: ", error);
+    }
   };
 
-  // ギャラリーから布地を削除する関数
-  const handleDeleteFabric = (id: string) => {
-    setFabricItems(prevItems => prevItems.filter(item => item.id !== id));
-  };
 
   return (
     <ThemeProvider theme={darkTheme}>
@@ -67,13 +109,11 @@ function App() {
           <Tabs value={selectedTab} onChange={handleTabChange} aria-label="main tabs">
             <Tab label="Camera" />
             <Tab label="Fabric Gallery" />
-            <Tab label="Patchwork Layout" />
           </Tabs>
         </Box>
         <Box sx={{ p: 3 }}>
           {selectedTab === 0 && <CameraView onAddFabric={handleAddFabric} />}
-          {selectedTab === 1 && <FabricGallery items={fabricItems} onDeleteItem={handleDeleteFabric} />}
-          {selectedTab === 2 && <PatchworkLayout items={fabricItems} />}
+          {selectedTab === 1 && user && <FabricGallery userId={user.uid} />}
         </Box>
       </Container>
     </ThemeProvider>

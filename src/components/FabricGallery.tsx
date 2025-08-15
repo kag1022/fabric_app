@@ -1,27 +1,70 @@
-import React, { useState, useMemo } from 'react';
-import { Box, Grid, Card, CardMedia, CardContent, Typography, Paper, CardActions, IconButton, FormControl, InputLabel, Select, MenuItem } from '@mui/material';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Box, Grid, Card, CardMedia, CardContent, Typography, Paper, CardActions, IconButton, FormControl, InputLabel, Select, MenuItem, CircularProgress } from '@mui/material';
 import DeleteIcon from '@mui/icons-material/Delete';
+import { db, storage } from '../firebase'; // Firebaseインスタンスをインポート
+import { collection, query, onSnapshot, orderBy, doc, deleteDoc } from 'firebase/firestore';
+import { ref, deleteObject } from 'firebase/storage';
 import { FabricItem } from '../App'; // App.tsxから型をインポート
 
 interface FabricGalleryProps {
-  items: FabricItem[];
-  onDeleteItem: (id: string) => void;
+  userId: string;
 }
 
-const FabricGallery: React.FC<FabricGalleryProps> = ({ items, onDeleteItem }) => {
+const FabricGallery: React.FC<FabricGalleryProps> = ({ userId }) => {
+  const [items, setItems] = useState<FabricItem[]>([]);
+  const [loading, setLoading] = useState(true);
   const [sortOrder, setSortOrder] = useState('default'); // 'default' or 'group'
 
-  const sortedItems = useMemo(() => {
-    // 元の配列を破壊しないようにコピーを作成
-    const newItems = [...items];
+  useEffect(() => {
+    if (!userId) return;
 
+    setLoading(true);
+    // Firestoreからデータをリアルタイムで取得
+    const q = query(collection(db, "users", userId, "fabrics"), orderBy("createdAt", "desc"));
+    const unsubscribe = onSnapshot(q, (querySnapshot) => {
+      const fabricsData: FabricItem[] = [];
+      querySnapshot.forEach((doc) => {
+        fabricsData.push({ id: doc.id, ...doc.data() } as FabricItem);
+      });
+      setItems(fabricsData);
+      setLoading(false);
+    });
+
+    // クリーンアップ関数
+    return () => unsubscribe();
+  }, [userId]);
+
+  const sortedItems = useMemo(() => {
+    const newItems = [...items];
     if (sortOrder === 'group') {
-      // グループ名でアルファベット/五十音順にソート
       newItems.sort((a, b) => a.group.localeCompare(b.group, 'ja'));
     }
-    // 'default' の場合は App.tsx から渡されたままの順序（新しいものが先頭）
     return newItems;
   }, [items, sortOrder]);
+
+  const handleDeleteItem = async (item: FabricItem) => {
+    if (!userId) return;
+
+    try {
+      // 1. Firestoreからドキュメントを削除
+      await deleteDoc(doc(db, "users", userId, "fabrics", item.id));
+
+      // 2. Firebase Storageから画像ファイルを削除
+      const imageRef = ref(storage, item.imageDataUrl);
+      await deleteObject(imageRef);
+
+    } catch (error) {
+      console.error("削除中にエラーが発生しました: ", error);
+    }
+  };
+
+  if (loading) {
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', mt: 4 }}>
+        <CircularProgress />
+      </Box>
+    );
+  }
 
   if (items.length === 0) {
     return (
@@ -87,7 +130,7 @@ const FabricGallery: React.FC<FabricGalleryProps> = ({ items, onDeleteItem }) =>
                 </Box>
               </CardContent>
               <CardActions sx={{ justifyContent: 'flex-end', pt: 0 }}>
-                <IconButton aria-label="delete" onClick={() => onDeleteItem(item.id)}>
+                <IconButton aria-label="delete" onClick={() => handleDeleteItem(item)}>
                   <DeleteIcon />
                 </IconButton>
               </CardActions>
