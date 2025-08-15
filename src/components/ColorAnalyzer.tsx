@@ -1,10 +1,11 @@
 import React, { useRef, useState, useCallback, useEffect } from 'react';
-import { Box, Typography, Card, CardContent, Button, Grid, Paper, CircularProgress } from '@mui/material';
+import { Box, Typography, Button, Grid, Paper, CircularProgress, Alert } from '@mui/material';
+import AddPhotoAlternateIcon from '@mui/icons-material/AddPhotoAlternate';
 import { rgbToHsv, classifyHue, classifyValue, getGroupName, ColorAnalysisResult } from '../utils/colorUtils';
 
 interface ColorAnalyzerProps {
   imageDataUrl: string;
-  onAddToGallery: (result: ColorAnalysisResult) => void;
+  onAddToGallery: (result: ColorAnalysisResult, imageDataUrl: string) => void;
 }
 
 const ColorAnalyzer: React.FC<ColorAnalyzerProps> = ({ imageDataUrl, onAddToGallery }) => {
@@ -22,10 +23,10 @@ const ColorAnalyzer: React.FC<ColorAnalyzerProps> = ({ imageDataUrl, onAddToGall
     setError(null);
 
     try {
-      const canvas = document.createElement('canvas');
-      const context = canvas.getContext('2d', { willReadFrequently: true });
+      const canvas = document.createElement("canvas");
+      const context = canvas.getContext("2d", { willReadFrequently: true });
       if (!context) {
-        throw new Error('Canvas Contextの取得に失敗しました。');
+        throw new Error("Canvas Contextの取得に失敗しました。");
       }
 
       const img = imageRef.current;
@@ -66,7 +67,7 @@ const ColorAnalyzer: React.FC<ColorAnalyzerProps> = ({ imageDataUrl, onAddToGall
       }
 
       if (dominantGroup.count === 0) {
-        throw new Error('主要色の計算に失敗しました。');
+        throw new Error("主要色の計算に失敗しました。");
       }
 
       const dominantRgb = {
@@ -97,79 +98,67 @@ const ColorAnalyzer: React.FC<ColorAnalyzerProps> = ({ imageDataUrl, onAddToGall
 
   const handleSave = () => {
     if (analysisResult) {
-      onAddToGallery(analysisResult);
+      onAddToGallery(analysisResult, imageDataUrl);
     }
   };
 
   return (
-    <Box sx={{ mt: 2 }}>
-      <Typography variant="h5" component="h2" gutterBottom>2. 色の分析結果</Typography> {/* 見出しレベルを調整 */}
-      <Card>
-        <CardContent>
-          <img
-            ref={imageRef}
-            src={imageDataUrl}
-            alt="分析対象の布地画像" // altをより具体的に
-            style={{ display: 'none' }}
-            onLoad={analyzeColor}
-            onError={() => {
-              setError("画像の読み込みに失敗しました。");
-              setIsLoading(false);
-            }}
-          />
-          {/* 分析中とエラーメッセージをスクリーンリーダーが読み上げるようにする */}
-          <Box aria-live="polite">
-            {isLoading && (
-              <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 200 }}>
-                <CircularProgress />
-                <Typography sx={{ ml: 2 }}>分析中...</Typography>
-              </Box>
-            )}
-            {error && <Typography color="error" role="alert">{error}</Typography>}
-          </Box>
-
+    <Box sx={{ width: "100%", mt: 2 }}>
+      <Paper elevation={4} sx={{ p: 3 }}>
+        <img
+          ref={imageRef}
+          src={imageDataUrl}
+          alt="分析対象の布地画像"
+          style={{ display: "none" }}
+          onLoad={analyzeColor}
+          onError={() => { setError("画像の読み込みに失敗しました。"); setIsLoading(false); }}
+        />
+        <Box aria-live="polite" sx={{ minHeight: 180 }}>
+          {isLoading && (
+            <Box sx={{ display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", height: "100%" }}>
+              <CircularProgress />
+              <Typography sx={{ mt: 2 }}>分析中...</Typography>
+            </Box>
+          )}
+          {error && <Alert severity="error">{error}</Alert>}
           {analysisResult && !isLoading && (
-            // ... (Grid container)
-            // ... (Grid items)
-            <Grid container spacing={2}>
-              <Grid item xs={12} md={6}>
+            <Grid container spacing={2} alignItems="center">
+              <Grid item xs={4}>
                 <Paper
-                  aria-label={`主要色: ${analysisResult.group}`} // ラベルを追加
+                  aria-label={`主要色: ${analysisResult.group}`}
                   sx={{
                     backgroundColor: `rgb(${analysisResult.dominantRgb.r}, ${analysisResult.dominantRgb.g}, ${analysisResult.dominantRgb.b})`,
-                    width: '100%',
-                    height: 200,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    border: '1px solid #fff'
+                    width: "100%",
+                    paddingTop: "100%", // 正方形を維持
+                    borderRadius: 1,
+                    border: "1px solid rgba(255, 255, 255, 0.2)"
                   }}
-                >
-                  <Typography variant="h6" sx={{ color: analysisResult.valueInfo.name === '暗' ? '#fff' : '#000' }}>
-                    主要色
-                  </Typography>
-                </Paper>
+                />
               </Grid>
-              <Grid item xs={12} md={6}>
-                <Typography><b>グループ:</b> {analysisResult.group}</Typography>
-                <Typography><b>色分類:</b> {analysisResult.hueInfo.name}</Typography>
-                <Typography><b>明度:</b> {analysisResult.valueInfo.name}</Typography>
-                <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+              <Grid item xs={8}>
+                <Typography variant="h5" component="p">グループ: {analysisResult.group}</Typography>
+                <Typography variant="body1">色: {analysisResult.hueInfo.name}</Typography>
+                <Typography variant="body1">明度: {analysisResult.valueInfo.name}</Typography>
+                <Typography variant="caption" color="text.secondary">
                   RGB: {analysisResult.dominantRgb.r}, {analysisResult.dominantRgb.g}, {analysisResult.dominantRgb.b}
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  HSV: {Math.round(analysisResult.hsv.h)}°, {Math.round(analysisResult.hsv.s * 100)}%, {Math.round(analysisResult.hsv.v * 100)}%
                 </Typography>
               </Grid>
             </Grid>
           )}
-        </CardContent>
-      </Card>
-      <Box sx={{ mt: 2, textAlign: 'center' }}>
-        <Button variant="contained" color="primary" onClick={handleSave} disabled={!analysisResult || isLoading}>
-          ギャラリーに追加
-        </Button>
-      </Box>
+        </Box>
+        <Box sx={{ mt: 3, textAlign: "center" }}>
+          <Button
+            variant="contained"
+            color="primary"
+            size="large"
+            onClick={handleSave}
+            disabled={!analysisResult || isLoading}
+            startIcon={<AddPhotoAlternateIcon />}
+          >
+            ギャラリーに追加
+          </Button>
+        </Box>
+      </Paper>
     </Box>
   );
 };

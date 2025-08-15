@@ -17,18 +17,17 @@ module.exports = {
   parserOptions: {
     project: ["tsconfig.json"],
     sourceType: "module",
+    // 以下の行を追加
+    tsconfigRootDir: __dirname,
   },
   ignorePatterns: [
     "/lib/**/*", // Ignore built files.
-    "/.eslintrc.js", // この行を追加
+    "/.eslintrc.js",
   ],
-  plugins: [
-    "@typescript-eslint",
-    "import",
-  ],
+  plugins: ["@typescript-eslint", "import"],
   rules: {
     "quotes": ["error", "double"],
     "import/no-unresolved": 0,
-    "indent": "off", // インデントのルールを無効化
+    "indent": "off",
   },
 };

@@ -1,5 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Box, Button, Typography, Card, CardMedia, CardContent, CardActions } from '@mui/material';
+import { Box, Button, Typography, Paper, CardMedia, Alert } from '@mui/material';
+import CameraAltIcon from '@mui/icons-material/CameraAlt';
+import ReplayIcon from '@mui/icons-material/Replay';
 import ColorAnalyzer from './ColorAnalyzer';
 import { ColorAnalysisResult } from '../utils/colorUtils';
 import ColorGroupTable from './ColorGroupTable';
@@ -17,7 +19,7 @@ const CameraView: React.FC<CameraViewProps> = ({ onAddFabric }) => {
 
   const stopCamera = useCallback(() => {
     if (stream) {
-      stream.getTracks().forEach(track => track.stop());
+      stream.getTracks().forEach((track) => track.stop());
       setStream(null);
     }
   }, [stream]);
@@ -28,10 +30,9 @@ const CameraView: React.FC<CameraViewProps> = ({ onAddFabric }) => {
     if (stream) {
       stopCamera();
     }
-    
     try {
-      const mediaStream = await navigator.mediaDevices.getUserMedia({ 
-        video: { facingMode: 'environment' } 
+      const mediaStream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'environment' },
       });
       setStream(mediaStream);
       if (videoRef.current) {
@@ -39,17 +40,16 @@ const CameraView: React.FC<CameraViewProps> = ({ onAddFabric }) => {
       }
     } catch (err) {
       console.error("Error accessing camera: ", err);
-      setError('カメラにアクセスできません。ブラウザの設定でカメラの使用を許可してください。');
+      setError("カメラにアクセスできません。ブラウザの設定でカメラの使用を許可してください。");
     }
   }, [stream, stopCamera]);
-
 
   useEffect(() => {
     startCamera();
     return () => {
       stopCamera();
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const captureImage = () => {
@@ -68,61 +68,63 @@ const CameraView: React.FC<CameraViewProps> = ({ onAddFabric }) => {
     }
   };
 
-  const handleAddToGallery = (result: ColorAnalysisResult) => {
-    if (capturedImage) {
-      onAddFabric(result, capturedImage);
-    }
-  };
-
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+    <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
       {!capturedImage ? (
         <>
-          <Typography variant="h5" component="h1">1. 布地を撮影する</Typography> {/* h1に変更 */}
-          <ColorGroupTable />
-          <Card sx={{ maxWidth: 600, width: '100%' }}>
-            <CardContent>
-              {error && <Typography role="alert" color="error" align="center" sx={{ mb: 2 }}>{error}</Typography>}
-              <Box sx={{ position: 'relative', backgroundColor: '#000', minHeight: '200px' }}>
-                <video 
-                  ref={videoRef} 
-                  autoPlay 
-                  playsInline 
-                  style={{ width: '100%', display: stream ? 'block' : 'none' }} 
-                  title="カメラプレビュー" // titleを追加
-                />
-                {!stream && !error && <Typography align="center" sx={{p:2}}>カメラを起動中...</Typography>}
-              </Box>
-              <canvas ref={canvasRef} style={{ display: 'none' }} aria-hidden="true" />
-            </CardContent>
-            <CardActions sx={{ justifyContent: 'center' }}>
-              <Button 
-                onClick={captureImage} 
-                variant="contained" 
+          <Typography variant="h4" component="h2" gutterBottom>
+            1. 布地を撮影する
+          </Typography>
+          <Paper elevation={4} sx={{ width: '100%', maxWidth: 500, overflow: 'hidden', p: 2 }}>
+            {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+            <Box sx={{ position: 'relative', backgroundColor: '#000', borderRadius: 1, overflow: 'hidden' }}>
+              <video
+                ref={videoRef}
+                autoPlay
+                playsInline
+                style={{ width: '100%', display: stream ? 'block' : 'none' }}
+                title="カメラプレビュー"
+              />
+              {!stream && !error && (
+                <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: 280 }}>
+                  <Typography>カメラを起動中...</Typography>
+                </Box>
+              )}
+            </Box>
+            <canvas ref={canvasRef} style={{ display: 'none' }} aria-hidden="true" />
+            <Box sx={{ mt: 2, textAlign: 'center' }}>
+              <Button
+                onClick={captureImage}
+                variant="contained"
+                size="large"
                 disabled={!stream}
-                aria-label="布地を撮影する" // aria-labelを追加
+                startIcon={<CameraAltIcon />}
+                aria-label="布地を撮影する"
               >
-                撮影する
+                撮影
               </Button>
-            </CardActions>
-          </Card>
+            </Box>
+          </Paper>
+          <ColorGroupTable />
         </>
       ) : (
-        <Box sx={{width: '100%', maxWidth: 600}}>
-            <Typography variant="h5" component="h2" gutterBottom>撮影画像</Typography> {/* 見出しレベルを調整 */}
-            <CardMedia component="img" image={capturedImage} alt="撮影された布地" sx={{marginBottom: 2}}/>
-            <Button 
-              onClick={startCamera} 
-              variant="outlined" 
-              fullWidth
-              aria-label="もう一度撮影する" // aria-labelを追加
-            >
-              再撮影する
-            </Button>
-            <ColorAnalyzer 
-                imageDataUrl={capturedImage} 
-                onAddToGallery={handleAddToGallery} 
-            />
+        <Box sx={{ width: '100%', maxWidth: 500, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+          <Typography variant="h4" component="h2" gutterBottom>
+            2. 色を分析・保存する
+          </Typography>
+          <CardMedia component="img" image={capturedImage} alt="撮影された布地" sx={{ borderRadius: 1, width: '100%' }} />
+          <Button
+            onClick={startCamera}
+            variant="outlined"
+            startIcon={<ReplayIcon />}
+            aria-label="もう一度撮影する"
+          >
+            再撮影する
+          </Button>
+          <ColorAnalyzer
+            imageDataUrl={capturedImage}
+            onAddToGallery={onAddFabric}
+          />
         </Box>
       )}
     </Box>
