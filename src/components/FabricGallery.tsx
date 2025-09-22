@@ -35,9 +35,24 @@ const FabricGallery: React.FC<FabricGalleryProps> = ({ userId }) => {
 
     return () => unsubscribe();
   }, [userId]);
-  
+
   const handleDeleteItem = async (item: FabricItem) => {
-    // ... (変更なし)
+    if (!window.confirm(`${item.group}の布地を削除してもよろしいですか？`)) {
+      return;
+    }
+
+    try {
+      // Firestoreドキュメントの削除
+      await deleteDoc(doc(db, "users", userId, "fabrics", item.id));
+
+      // Firebase Storageの画像ファイルを削除
+      const imageRef = ref(storage, item.imageDataUrl);
+      await deleteObject(imageRef);
+
+    } catch (error) {
+      console.error("Error deleting item: ", error);
+      setError("アイテムの削除に失敗しました。");
+    }
   };
 
   if (loading) {
@@ -71,20 +86,20 @@ const FabricGallery: React.FC<FabricGalleryProps> = ({ userId }) => {
                 />
                 <Box sx={{ p: 2, flexGrow: 1, display: 'flex', flexDirection: 'column' }}>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 1 }}>
-                     <Paper
-                        elevation={0}
-                        sx={{
-                          width: 32,
-                          height: 32,
-                          backgroundColor: `rgb(${item.dominantRgb.r}, ${item.dominantRgb.g}, ${item.dominantRgb.b})`,
-                          border: '1px solid rgba(255, 255, 255, 0.2)',
-                          borderRadius: '50%',
-                        }}
-                        aria-label={`主要色: ${item.group}`}
-                      />
-                      <Typography variant="h6" component="p">
-                        {item.group}
-                      </Typography>
+                    <Paper
+                      elevation={0}
+                      sx={{
+                        width: 32,
+                        height: 32,
+                        backgroundColor: `rgb(${item.dominantRgb.r}, ${item.dominantRgb.g}, ${item.dominantRgb.b})`,
+                        border: '1px solid rgba(255, 255, 255, 0.2)',
+                        borderRadius: '50%',
+                      }}
+                      aria-label={`主要色: ${item.group}`}
+                    />
+                    <Typography variant="h6" component="p">
+                      {item.group}
+                    </Typography>
                   </Box>
                   <Typography variant="body2" color="text.secondary">
                     {item.hueInfo.name} / {item.valueInfo.name}

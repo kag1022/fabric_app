@@ -49,19 +49,46 @@ const ColorAnalyzer: React.FC<ColorAnalyzerProps> = ({ imageDataUrl, onAddToGall
       const imageData = context.getImageData(startX, startY, width, height);
       const data = imageData.data;
 
-      // 平均色を計算
-      let totalR = 0, totalG = 0, totalB = 0;
-      const pixelCount = data.length / 4;
-      for (let i = 0; i < data.length; i += 4) {
-        totalR += data[i];
-        totalG += data[i + 1];
-        totalB += data[i + 2];
+      // --- ドミナントカラー抽出アルゴリズム ---
+      // 1. ピクセルを量子化してグループ分け
+      const colorCounts: { [key: string]: { r: number; g: number; b: number; count: number } } = {};
+      // 処理負荷軽減のため、5ピクセルごとにサンプリング
+      const step = 4 * 5; 
+      for (let i = 0; i < data.length; i += step) {
+        const r = data[i];
+        const g = data[i + 1];
+        const b = data[i + 2];
+        // RGB値を32段階で量子化し、キーを作成 (256/32=8段階 => 8*8*8=512グループ)
+        const key = `${Math.round(r / 32)}_${Math.round(g / 32)}_${Math.round(b / 32)}`;
+        if (!colorCounts[key]) {
+          colorCounts[key] = { r: 0, g: 0, b: 0, count: 0 };
+        }
+        // 各グループの合計RGB値とピクセル数を記録
+        colorCounts[key].r += r;
+        colorCounts[key].g += g;
+        colorCounts[key].b += b;
+        colorCounts[key].count++;
       }
 
+      // 2. 最もピクセル数の多いグループを見つける
+      let dominantGroup = { r: 0, g: 0, b: 0, count: 0 };
+      let maxCount = 0;
+      for (const key in colorCounts) {
+        if (colorCounts[key].count > maxCount) {
+          maxCount = colorCounts[key].count;
+          dominantGroup = colorCounts[key];
+        }
+      }
+
+      if (dominantGroup.count === 0) {
+        throw new Error("主要色の計算に失敗しました。画像が読み込めていない可能性があります。");
+      }
+
+      // 3. 最も優勢なグループの平均色を計算
       const dominantRgb = {
-        r: Math.round(totalR / pixelCount),
-        g: Math.round(totalG / pixelCount),
-        b: Math.round(totalB / pixelCount),
+        r: Math.round(dominantGroup.r / dominantGroup.count),
+        g: Math.round(dominantGroup.g / dominantGroup.count),
+        b: Math.round(dominantGroup.b / dominantGroup.count),
       };
 
       const hsv = rgbToHsv(dominantRgb.r, dominantRgb.g, dominantRgb.b);

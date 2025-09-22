@@ -1,0 +1,12 @@
+# Set default behavior for all files to let Git handle line endings.
+# Git will normalize to LF on commit and convert to native line endings on checkout.
+* text=auto
+
+# Explicitly declare text files we want to always normalize to LF.
+# This is a good practice for cross-platform projects.
+*.js    text eol=lf
+*.jsx   text eol=lf
+*.ts    text eol=lf
+*.tsx   text eol=lf
+*.json  text eol=lf
+*.md    text eol=lf
