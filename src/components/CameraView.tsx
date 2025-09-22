@@ -73,7 +73,7 @@ const CameraView: React.FC<CameraViewProps> = ({ onAddFabric }) => {
       {!capturedImage ? (
         <>
           <Typography variant="h4" component="h2" gutterBottom>
-            1. 布地を撮影する
+            布地を撮影する
           </Typography>
           <Paper elevation={4} sx={{ width: '100%', maxWidth: 500, overflow: 'hidden', p: 2 }}>
             {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
@@ -110,7 +110,7 @@ const CameraView: React.FC<CameraViewProps> = ({ onAddFabric }) => {
       ) : (
         <Box sx={{ width: '100%', maxWidth: 500, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
           <Typography variant="h4" component="h2" gutterBottom>
-            2. 色を分析・保存する
+            色を分析・保存する
           </Typography>
           <CardMedia component="img" image={capturedImage} alt="撮影された布地" sx={{ borderRadius: 1, width: '100%' }} />
           <Button

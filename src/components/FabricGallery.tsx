@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Box, Grid, Card, CardMedia, Typography, Paper, CardActions, IconButton, CircularProgress, Alert } from '@mui/material';
+import { Box, Grid, Card, CardMedia, Typography, Paper, CardActions, IconButton, CircularProgress, Alert, Button, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle, useTheme, useMediaQuery } from '@mui/material';
 import DeleteIcon from '@mui/icons-material/Delete';
 import { db, storage } from '../firebase';
 import { collection, query, onSnapshot, orderBy, doc, deleteDoc } from 'firebase/firestore';
@@ -14,6 +14,10 @@ const FabricGallery: React.FC<FabricGalleryProps> = ({ userId }) => {
   const [items, setItems] = useState<FabricItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [itemToDelete, setItemToDelete] = useState<FabricItem | null>(null);
+
+  const theme = useTheme();
+  const fullScreen = useMediaQuery(theme.breakpoints.down('sm'));
 
   useEffect(() => {
     if (!userId) return;
@@ -36,22 +40,30 @@ const FabricGallery: React.FC<FabricGalleryProps> = ({ userId }) => {
     return () => unsubscribe();
   }, [userId]);
 
-  const handleDeleteItem = async (item: FabricItem) => {
-    if (!window.confirm(`${item.group}の布地を削除してもよろしいですか？`)) {
-      return;
-    }
+  const handleOpenDeleteDialog = (item: FabricItem) => {
+    setItemToDelete(item);
+  };
+
+  const handleCloseDeleteDialog = () => {
+    setItemToDelete(null);
+  };
+
+  const handleDeleteItem = async () => {
+    if (!itemToDelete) return;
 
     try {
       // Firestoreドキュメントの削除
-      await deleteDoc(doc(db, "users", userId, "fabrics", item.id));
+      await deleteDoc(doc(db, "users", userId, "fabrics", itemToDelete.id));
 
       // Firebase Storageの画像ファイルを削除
-      const imageRef = ref(storage, item.imageDataUrl);
+      const imageRef = ref(storage, itemToDelete.imageDataUrl);
       await deleteObject(imageRef);
 
     } catch (error) {
       console.error("Error deleting item: ", error);
       setError("アイテムの削除に失敗しました。");
+    } finally {
+      handleCloseDeleteDialog();
     }
   };
 
@@ -65,7 +77,7 @@ const FabricGallery: React.FC<FabricGalleryProps> = ({ userId }) => {
 
   return (
     <Box>
-      <Typography variant="h4" component="h3" gutterBottom sx={{ textAlign: 'center' }}>
+      <Typography variant="h4" component="h2" gutterBottom sx={{ textAlign: 'center' }}>
         My Fabric Gallery
       </Typography>
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
@@ -77,7 +89,17 @@ const FabricGallery: React.FC<FabricGalleryProps> = ({ userId }) => {
         <Grid container spacing={3}>
           {items.map((item) => (
             <Grid item key={item.id} xs={12} sm={6} md={4}>
-              <Card sx={{ display: 'flex', flexDirection: 'column', height: '100%', bgcolor: 'background.paper' }}>
+              <Card sx={{ 
+                display: 'flex', 
+                flexDirection: 'column', 
+                height: '100%', 
+                bgcolor: 'background.paper',
+                transition: 'transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out',
+                '&:hover': {
+                  transform: 'translateY(-4px)',
+                  boxShadow: theme.shadows[4],
+                }
+              }}>
                 <CardMedia
                   component="img"
                   height="180"
@@ -106,7 +128,7 @@ const FabricGallery: React.FC<FabricGalleryProps> = ({ userId }) => {
                   </Typography>
                   <Box sx={{ flexGrow: 1 }} />
                   <CardActions sx={{ justifyContent: 'flex-end', p: 0, pt: 1 }}>
-                    <IconButton aria-label={`グループ ${item.group} の布地を削除`} onClick={() => handleDeleteItem(item)}>
+                    <IconButton aria-label={`グループ ${item.group} の布地を削除`} onClick={() => handleOpenDeleteDialog(item)}>
                       <DeleteIcon />
                     </IconButton>
                   </CardActions>
@@ -115,6 +137,29 @@ const FabricGallery: React.FC<FabricGalleryProps> = ({ userId }) => {
             </Grid>
           ))}
         </Grid>
+      )}
+
+      {itemToDelete && (
+        <Dialog
+          open={!!itemToDelete}
+          onClose={handleCloseDeleteDialog}
+          fullScreen={fullScreen}
+          aria-labelledby="delete-dialog-title"
+          aria-describedby="delete-dialog-description"
+        >
+          <DialogTitle id="delete-dialog-title">アイテムを削除</DialogTitle>
+          <DialogContent>
+            <DialogContentText id="delete-dialog-description">
+              グループ「{itemToDelete.group}」の布地を本当に削除しますか？この操作は元に戻せません。
+            </DialogContentText>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={handleCloseDeleteDialog}>キャンセル</Button>
+            <Button onClick={handleDeleteItem} color="error" autoFocus>
+              削除
+            </Button>
+          </DialogActions>
+        </Dialog>
       )}
     </Box>
   );

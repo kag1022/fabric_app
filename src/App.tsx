@@ -98,17 +98,21 @@ function App() {
             </Typography>
           </Box>
 
-          <section aria-labelledby="camera-heading">
-            <h2 id="camera-heading" style={{ display: 'none' }}>撮影エリア</h2>
-            <CameraView onAddFabric={handleAddFabric} />
-          </section>
+          <Box sx={{
+            display: 'grid',
+            gridTemplateColumns: { md: '1fr 1fr' },
+            gap: { md: 8 },
+          }}>
+            <section aria-labelledby="camera-heading">
+              <h2 id="camera-heading" style={{ display: 'none' }}>撮影エリア</h2>
+              <CameraView onAddFabric={handleAddFabric} />
+            </section>
 
-          <Divider sx={{ my: 8 }} />
-
-          <section id="gallery-section" aria-labelledby="gallery-heading">
-            <h2 id="gallery-heading" style={{ display: 'none' }}>ギャラリーエリア</h2>
-            {user && <FabricGallery userId={user.uid} />}
-          </section>
+            <section id="gallery-section" aria-labelledby="gallery-heading">
+              <h2 id="gallery-heading" style={{ display: 'none' }}>ギャラリーエリア</h2>
+              {user && <FabricGallery userId={user.uid} />}
+            </section>
+          </Box>
 
         </Container>
       </Main>
