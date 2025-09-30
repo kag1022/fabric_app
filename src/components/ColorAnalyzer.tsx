@@ -9,6 +9,7 @@ import {
   ColorAnalysisResult,
   classifySaturation,
 } from '../utils/colorUtils';
+import { getDominantColors } from '../utils/colorClustering';
 
 interface ColorAnalyzerProps {
   imageDataUrl: string;
@@ -16,7 +17,7 @@ interface ColorAnalyzerProps {
 }
 
 const ColorAnalyzer: React.FC<ColorAnalyzerProps> = ({ imageDataUrl, onAddToGallery }) => {
-  const [analysisResult, setAnalysisResult] = useState<ColorAnalysisResult | null>(null);
+  const [analysisResults, setAnalysisResults] = useState<ColorAnalysisResult[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const imageRef = useRef<HTMLImageElement>(null);
@@ -41,76 +42,38 @@ const ColorAnalyzer: React.FC<ColorAnalyzerProps> = ({ imageDataUrl, onAddToGall
       canvas.height = imgHeight;
       context.drawImage(img, 0, 0, imgWidth, imgHeight);
 
-      // 画像の中央90%の領域を計算
       const startX = Math.floor(imgWidth * 0.05);
       const startY = Math.floor(imgHeight * 0.05);
       const width = Math.floor(imgWidth * 0.9);
       const height = Math.floor(imgHeight * 0.9);
       const imageData = context.getImageData(startX, startY, width, height);
-      const data = imageData.data;
-
-      // --- ドミナントカラー抽出アルゴリズム ---
-      // 1. ピクセルを量子化してグループ分け
-      const colorCounts: { [key: string]: { r: number; g: number; b: number; count: number } } = {};
-      // 処理負荷軽減のため、5ピクセルごとにサンプリング
-      const step = 4 * 5; 
-      for (let i = 0; i < data.length; i += step) {
-        const r = data[i];
-        const g = data[i + 1];
-        const b = data[i + 2];
-        // RGB値を32段階で量子化し、キーを作成 (256/32=8段階 => 8*8*8=512グループ)
-        const key = `${Math.round(r / 32)}_${Math.round(g / 32)}_${Math.round(b / 32)}`;
-        if (!colorCounts[key]) {
-          colorCounts[key] = { r: 0, g: 0, b: 0, count: 0 };
-        }
-        // 各グループの合計RGB値とピクセル数を記録
-        colorCounts[key].r += r;
-        colorCounts[key].g += g;
-        colorCounts[key].b += b;
-        colorCounts[key].count++;
-      }
-
-      // 2. 最もピクセル数の多いグループを見つける
-      let dominantGroup = { r: 0, g: 0, b: 0, count: 0 };
-      let maxCount = 0;
-      for (const key in colorCounts) {
-        if (colorCounts[key].count > maxCount) {
-          maxCount = colorCounts[key].count;
-          dominantGroup = colorCounts[key];
-        }
-      }
-
-      if (dominantGroup.count === 0) {
-        throw new Error("主要色の計算に失敗しました。画像が読み込めていない可能性があります。");
-      }
-
-      // 3. 最も優勢なグループの平均色を計算
-      const dominantRgb = {
-        r: Math.round(dominantGroup.r / dominantGroup.count),
-        g: Math.round(dominantGroup.g / dominantGroup.count),
-        b: Math.round(dominantGroup.b / dominantGroup.count),
-      };
-
-      const hsv = rgbToHsv(dominantRgb.r, dominantRgb.g, dominantRgb.b);
-      const saturationInfo = classifySaturation(hsv.s);
       
-      // 無彩色の場合は色相カテゴリを0にする
-      const hueInfo = saturationInfo.name === '無彩色'
-        ? { category: 0, name: '無彩色' }
-        : classifyHue(hsv.h);
-        
-      const valueInfo = classifyValue(hsv.s, hsv.v);
-      const group = getGroupName(hueInfo, valueInfo, saturationInfo);
+      const dominantColors = getDominantColors(imageData.data, 5);
 
-      const result: ColorAnalysisResult = {
-        dominantRgb,
-        hsv,
-        hueInfo,
-        saturationInfo,
-        valueInfo,
-        group,
-      };
-      setAnalysisResult(result);
+      if (dominantColors.length === 0) {
+        throw new Error("主要色の計算に失敗しました。");
+      }
+
+      const results: ColorAnalysisResult[] = dominantColors.map(color => {
+        const hsv = rgbToHsv(color.r, color.g, color.b);
+        const saturationInfo = classifySaturation(hsv.s);
+        const hueInfo = saturationInfo.name === '無彩色'
+          ? { category: 0, name: '無彩色' }
+          : classifyHue(hsv.h);
+        const valueInfo = classifyValue(hsv.s, hsv.v);
+        const group = getGroupName(hueInfo, valueInfo, saturationInfo);
+
+        return {
+          dominantRgb: color,
+          hsv,
+          hueInfo,
+          saturationInfo,
+          valueInfo,
+          group,
+        };
+      });
+
+      setAnalysisResults(results);
     } catch (e: any) {
       setError(`色分析中にエラーが発生しました: ${e.message}`);
     } finally {
@@ -121,14 +84,17 @@ const ColorAnalyzer: React.FC<ColorAnalyzerProps> = ({ imageDataUrl, onAddToGall
   useEffect(() => {
     setIsLoading(true);
     setError(null);
-    setAnalysisResult(null);
+    setAnalysisResults([]);
   }, [imageDataUrl]);
 
   const handleSave = () => {
-    if (analysisResult) {
-      onAddToGallery(analysisResult, imageDataUrl);
+    if (analysisResults.length > 0) {
+      // 一番大きいクラスタの結果を保存する
+      onAddToGallery(analysisResults[0], imageDataUrl);
     }
   };
+
+  const mainResult = analysisResults.length > 0 ? analysisResults[0] : null;
 
   return (
     <Box sx={{ width: "100%", mt: 2 }}>
@@ -149,13 +115,13 @@ const ColorAnalyzer: React.FC<ColorAnalyzerProps> = ({ imageDataUrl, onAddToGall
             </Box>
           )}
           {error && <Alert severity="error">{error}</Alert>}
-          {analysisResult && !isLoading && (
+          {mainResult && !isLoading && (
             <Grid container spacing={2} alignItems="center">
               <Grid item xs={4}>
                 <Paper
-                  aria-label={`主要色: ${analysisResult.group}`}
+                  aria-label={`主要色: ${mainResult.group}`}
                   sx={{
-                    backgroundColor: `rgb(${analysisResult.dominantRgb.r}, ${analysisResult.dominantRgb.g}, ${analysisResult.dominantRgb.b})`,
+                    backgroundColor: `rgb(${mainResult.dominantRgb.r}, ${mainResult.dominantRgb.g}, ${mainResult.dominantRgb.b})`,
                     width: "100%",
                     paddingTop: "100%",
                     borderRadius: 1,
@@ -164,13 +130,33 @@ const ColorAnalyzer: React.FC<ColorAnalyzerProps> = ({ imageDataUrl, onAddToGall
                 />
               </Grid>
               <Grid item xs={8}>
-                <Typography variant="h5" component="p">グループ: {analysisResult.group}</Typography>
-                <Typography variant="body1">色分類: {analysisResult.hueInfo.name}</Typography>
-                <Typography variant="body1">明度: {analysisResult.valueInfo.name}</Typography>
+                <Typography variant="h5" component="p">グループ: {mainResult.group}</Typography>
+                <Typography variant="body1">色分類: {mainResult.hueInfo.name}</Typography>
+                <Typography variant="body1">明度: {mainResult.valueInfo.name}</Typography>
                 <Typography variant="caption" color="text.secondary">
-                  鮮やかさ: {analysisResult.saturationInfo.name}
+                  鮮やかさ: {mainResult.saturationInfo.name}
                 </Typography>
               </Grid>
+              {analysisResults.length > 1 && (
+                <Grid item xs={12}>
+                  <Typography variant="subtitle1" sx={{ mt: 2 }}>カラーパレット</Typography>
+                  <Box sx={{ display: 'flex', gap: 1, mt: 1 }}>
+                    {analysisResults.map((result, index) => (
+                      <Paper
+                        key={index}
+                        sx={{
+                          backgroundColor: `rgb(${result.dominantRgb.r}, ${result.dominantRgb.g}, ${result.dominantRgb.b})`,
+                          width: 40,
+                          height: 40,
+                          borderRadius: 1,
+                          border: "1px solid rgba(0, 0, 0, 0.1)"
+                        }}
+                        title={`${result.group} | ${result.hueInfo.name}`}
+                      />
+                    ))}
+                  </Box>
+                </Grid>
+              )}
             </Grid>
           )}
         </Box>
@@ -180,7 +166,7 @@ const ColorAnalyzer: React.FC<ColorAnalyzerProps> = ({ imageDataUrl, onAddToGall
             color="primary"
             size="large"
             onClick={handleSave}
-            disabled={!analysisResult || isLoading}
+            disabled={analysisResults.length === 0 || isLoading}
             startIcon={<AddPhotoAlternateIcon />}
           >
             ギャラリーに追加
