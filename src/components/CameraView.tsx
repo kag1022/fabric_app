@@ -77,7 +77,7 @@ const CameraView: React.FC<CameraViewProps> = ({ onAddFabric }) => {
           </Typography>
           <Paper elevation={4} sx={{ width: '100%', maxWidth: 500, overflow: 'hidden', p: 2 }}>
             {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
-            <Box sx={{ position: 'relative', backgroundColor: '#000', borderRadius: 1, overflow: 'hidden' }}>
+            <Box sx={{ position: 'relative', backgroundColor: '#000', borderRadius: 4, overflow: 'hidden' }}>
               <video
                 ref={videoRef}
                 autoPlay

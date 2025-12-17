@@ -27,21 +27,95 @@ const darkTheme = createTheme({
   palette: {
     mode: 'dark',
     primary: {
-      main: '#90caf9',
+      main: '#00e5ff', // Cyberpunk Cyan
+    },
+    secondary: {
+      main: '#ff4081', // Pink accent
     },
     background: {
-      default: '#121212',
-      paper: '#1e1e1e',
+      default: 'transparent', // Let gradient show through
+      paper: 'rgba(255, 255, 255, 0.05)', // Glass effect base
+    },
+    text: {
+      primary: '#ffffff',
+      secondary: 'rgba(255, 255, 255, 0.7)',
     },
   },
   typography: {
-    fontFamily: '"Noto Sans JP", sans-serif',
+    fontFamily: '"Inter", "Noto Sans JP", sans-serif',
+    h3: {
+      fontWeight: 700,
+      letterSpacing: '-0.02em',
+    },
+    h4: {
+      fontWeight: 600,
+      letterSpacing: '-0.01em',
+    },
+    button: {
+      fontWeight: 600,
+      textTransform: 'none', // Modern feel
+    },
+  },
+  shape: {
+    borderRadius: 16, // Softer, modern corners
+  },
+  components: {
+    MuiCssBaseline: {
+      styleOverrides: {
+        body: {
+          backgroundColor: 'transparent', // Handled by index.css
+          scrollbarColor: "#6b6b6b #2b2b2b",
+          "&::-webkit-scrollbar, & *::-webkit-scrollbar": {
+            backgroundColor: "#2b2b2b",
+          },
+          "&::-webkit-scrollbar-thumb, & *::-webkit-scrollbar-thumb": {
+            borderRadius: 8,
+            backgroundColor: "#6b6b6b",
+            minHeight: 24,
+            border: "3px solid #2b2b2b",
+          },
+        },
+      },
+    },
+    MuiPaper: {
+      styleOverrides: {
+        root: {
+          backdropFilter: 'blur(16px)',
+          border: '1px solid rgba(255, 255, 255, 0.1)',
+          boxShadow: '0 4px 30px rgba(0, 0, 0, 0.1)',
+        },
+      },
+    },
+    MuiCard: {
+      styleOverrides: {
+        root: {
+          background: 'rgba(255, 255, 255, 0.05)', // Glassy
+          backdropFilter: 'blur(16px)',
+          border: '1px solid rgba(255, 255, 255, 0.1)',
+        },
+      },
+    },
+    MuiButton: {
+      styleOverrides: {
+        root: {
+          borderRadius: 24, // Pill shape
+          padding: '8px 24px',
+          boxShadow: '0 4px 14px 0 rgba(0,0,0,0.3)',
+        },
+        containedPrimary: {
+          background: 'linear-gradient(45deg, #00e5ff 30%, #00b0ff 90%)',
+          color: '#000',
+          fontWeight: 'bold',
+        },
+      },
+    },
   },
 });
 
 const Main = styled('main')(({ theme }) => ({
-  paddingTop: theme.spacing(4),
-  paddingBottom: theme.spacing(4),
+  paddingTop: theme.spacing(8),
+  paddingBottom: theme.spacing(8),
+  minHeight: '100vh',
 }));
 
 function App() {
