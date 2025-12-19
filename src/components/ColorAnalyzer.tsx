@@ -47,7 +47,7 @@ const ColorAnalyzer: React.FC<ColorAnalyzerProps> = ({ imageDataUrl, onAddToGall
       const width = Math.floor(imgWidth * 0.9);
       const height = Math.floor(imgHeight * 0.9);
       const imageData = context.getImageData(startX, startY, width, height);
-      
+
       const dominantColors = getDominantColors(imageData.data, 5);
 
       if (dominantColors.length === 0) {
@@ -124,7 +124,7 @@ const ColorAnalyzer: React.FC<ColorAnalyzerProps> = ({ imageDataUrl, onAddToGall
                     backgroundColor: `rgb(${mainResult.dominantRgb.r}, ${mainResult.dominantRgb.g}, ${mainResult.dominantRgb.b})`,
                     width: "100%",
                     paddingTop: "100%",
-                    borderRadius: 1,
+                    borderRadius: 4,
                     border: "1px solid rgba(255, 255, 255, 0.2)"
                   }}
                 />
@@ -148,7 +148,7 @@ const ColorAnalyzer: React.FC<ColorAnalyzerProps> = ({ imageDataUrl, onAddToGall
                           backgroundColor: `rgb(${result.dominantRgb.r}, ${result.dominantRgb.g}, ${result.dominantRgb.b})`,
                           width: 40,
                           height: 40,
-                          borderRadius: 1,
+                          borderRadius: 2,
                           border: "1px solid rgba(0, 0, 0, 0.1)"
                         }}
                         title={`${result.group} | ${result.hueInfo.name}`}
