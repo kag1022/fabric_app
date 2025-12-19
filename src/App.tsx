@@ -4,7 +4,13 @@ import CssBaseline from '@mui/material/CssBaseline';
 import Container from '@mui/material/Container';
 import Typography from '@mui/material/Typography';
 import Box from '@mui/material/Box';
+import Paper from '@mui/material/Paper';
+import BottomNavigation from '@mui/material/BottomNavigation';
+import BottomNavigationAction from '@mui/material/BottomNavigationAction';
+import CameraAltIcon from '@mui/icons-material/CameraAlt';
+import CollectionsIcon from '@mui/icons-material/Collections';
 
+import { Routes, Route, useNavigate, useLocation } from 'react-router-dom';
 
 // Firebase
 import { auth } from './firebase';
@@ -109,18 +115,28 @@ const darkTheme = createTheme({
         },
       },
     },
+    MuiBottomNavigation: {
+      styleOverrides: {
+        root: {
+          backgroundColor: 'rgba(20, 20, 20, 0.8)',
+          backdropFilter: 'blur(20px)',
+          borderTop: '1px solid rgba(255, 255, 255, 0.1)',
+        }
+      }
+    }
   },
 });
 
 const Main = styled('main')(({ theme }) => ({
-  paddingTop: theme.spacing(8),
-  paddingBottom: theme.spacing(8),
+  paddingTop: theme.spacing(4),
+  paddingBottom: theme.spacing(10), // Increased bottom padding for nav bar
   minHeight: '100vh',
 }));
 
 function App() {
   const [user, setUser] = useState<User | null>(null);
-
+  const navigate = useNavigate();
+  const location = useLocation();
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
@@ -132,7 +148,11 @@ function App() {
         });
       }
     });
-    return () => unsubscribe();
+    return () => {
+      if (typeof unsubscribe === 'function') {
+        unsubscribe();
+      }
+    };
   }, []);
 
   const handleAddFabric = async (result: ColorAnalysisResult, imageDataUrl: string) => {
@@ -151,8 +171,8 @@ function App() {
         createdAt: serverTimestamp(),
       });
 
-      // ギャラリーセクションにスクロール
-      document.getElementById('gallery-section')?.scrollIntoView({ behavior: 'smooth' });
+      // ギャラリーへ遷移
+      navigate('/gallery');
     } catch (error) {
       console.error("Error saving to Firebase: ", error);
     }
@@ -163,33 +183,43 @@ function App() {
       <CssBaseline />
       <Main>
         <Container maxWidth="md">
-          <Box sx={{ textAlign: 'center', mb: 6 }}>
-            <Typography variant="h3" component="h1" gutterBottom>
+          <Box sx={{ textAlign: 'center', mb: 3 }}>
+            <Typography variant="h5" component="h1" sx={{ fontWeight: 800, background: 'linear-gradient(45deg, #00e5ff, #ff4081)', backgroundClip: 'text', textFillColor: 'transparent', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
               Fabric Color Classifier
             </Typography>
-            <Typography variant="body1" color="text.secondary">
-              布地の写真を撮って、色で自動的に分類・整理しましょう。
-            </Typography>
           </Box>
 
-          <Box sx={{
-            display: 'grid',
-            gridTemplateColumns: { md: '1fr 1fr' },
-            gap: { md: 8 },
-          }}>
-            <section aria-labelledby="camera-heading">
-              <h2 id="camera-heading" style={{ display: 'none' }}>撮影エリア</h2>
-              <CameraView onAddFabric={handleAddFabric} />
-            </section>
-
-            <section id="gallery-section" aria-labelledby="gallery-heading">
-              <h2 id="gallery-heading" style={{ display: 'none' }}>ギャラリーエリア</h2>
-              {user && <FabricGallery userId={user.uid} />}
-            </section>
-          </Box>
-
+          <Routes>
+            <Route path="/" element={
+              <Box>
+                <Box sx={{ mb: 2, textAlign: 'center' }}>
+                  <Typography variant="body1" color="text.secondary">
+                    布地の写真を撮って、色で自動的に分類・整理しましょう。
+                  </Typography>
+                </Box>
+                <CameraView onAddFabric={handleAddFabric} />
+              </Box>
+            } />
+            <Route path="/gallery" element={
+              user ? <FabricGallery userId={user.uid} /> : <Typography sx={{ textAlign: 'center', mt: 4 }}>Login required to view gallery</Typography>
+            } />
+          </Routes>
         </Container>
       </Main>
+
+      <Paper sx={{ position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 1000 }} elevation={3}>
+        <BottomNavigation
+          showLabels
+          value={location.pathname === '/gallery' ? 1 : 0}
+          onChange={(event, newValue) => {
+            if (newValue === 0) navigate('/');
+            else navigate('/gallery');
+          }}
+        >
+          <BottomNavigationAction label="Camera" icon={<CameraAltIcon />} />
+          <BottomNavigationAction label="Gallery" icon={<CollectionsIcon />} />
+        </BottomNavigation>
+      </Paper>
     </ThemeProvider>
   );
 }
