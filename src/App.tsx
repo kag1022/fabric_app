@@ -9,18 +9,20 @@ import BottomNavigation from '@mui/material/BottomNavigation';
 import BottomNavigationAction from '@mui/material/BottomNavigationAction';
 import CameraAltIcon from '@mui/icons-material/CameraAlt';
 import CollectionsIcon from '@mui/icons-material/Collections';
+import CircularProgress from '@mui/material/CircularProgress';
 
-import { Routes, Route, useNavigate, useLocation } from 'react-router-dom';
+import { Routes, Route, useNavigate, useLocation, Navigate } from 'react-router-dom';
 
 // Firebase
 import { auth } from './firebase';
-import { onAuthStateChanged, signInAnonymously, User } from 'firebase/auth';
+import { onAuthStateChanged, User } from 'firebase/auth'; // signInAnonymously removed
 import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
 import { getDownloadURL, ref, uploadString } from 'firebase/storage';
 import { db, storage } from './firebase';
 
 import CameraView from './components/CameraView';
 import FabricGallery from './components/FabricGallery';
+import Login from './components/Login';
 import { ColorAnalysisResult } from './utils/colorUtils';
 
 export interface FabricItem extends ColorAnalysisResult {
@@ -135,18 +137,16 @@ const Main = styled('main')(({ theme }) => ({
 
 function App() {
   const [user, setUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
   const location = useLocation();
 
   useEffect(() => {
+    console.error("DEBUG: App useEffect running");
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-      if (currentUser) {
-        setUser(currentUser);
-      } else {
-        signInAnonymously(auth).catch((error) => {
-          console.error("Anonymous sign-in failed:", error);
-        });
-      }
+      console.error("DEBUG: App onAuthStateChanged callback triggered", currentUser);
+      setUser(currentUser);
+      setLoading(false);
     });
     return () => {
       if (typeof unsubscribe === 'function') {
@@ -178,48 +178,68 @@ function App() {
     }
   };
 
+  if (loading) {
+    return (
+      <ThemeProvider theme={darkTheme}>
+        <CssBaseline />
+        <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
+          <CircularProgress />
+        </Box>
+      </ThemeProvider>
+    );
+  }
+
   return (
     <ThemeProvider theme={darkTheme}>
       <CssBaseline />
       <Main>
         <Container maxWidth="md">
-          <Box sx={{ textAlign: 'center', mb: 3 }}>
-            <Typography variant="h5" component="h1" sx={{ fontWeight: 800, background: 'linear-gradient(45deg, #00e5ff, #ff4081)', backgroundClip: 'text', textFillColor: 'transparent', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
-              Fabric Color Classifier
-            </Typography>
-          </Box>
+          {user && ( // タイトルはログイン時のみ、または適切に配置
+            <Box sx={{ textAlign: 'center', mb: 3 }}>
+              <Typography variant="h5" component="h1" sx={{ fontWeight: 800, background: 'linear-gradient(45deg, #00e5ff, #ff4081)', backgroundClip: 'text', textFillColor: 'transparent', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
+                Fabric Color Classifier
+              </Typography>
+            </Box>
+          )}
 
           <Routes>
+            <Route path="/login" element={user ? <Navigate to="/" /> : <Login />} />
+
             <Route path="/" element={
-              <Box>
-                <Box sx={{ mb: 2, textAlign: 'center' }}>
-                  <Typography variant="body1" color="text.secondary">
-                    布地の写真を撮って、色で自動的に分類・整理しましょう。
-                  </Typography>
+              user ? (
+                <Box>
+                  <Box sx={{ mb: 2, textAlign: 'center' }}>
+                    <Typography variant="body1" color="text.secondary">
+                      布地の写真を撮って、色で自動的に分類・整理しましょう。
+                    </Typography>
+                  </Box>
+                  <CameraView onAddFabric={handleAddFabric} />
                 </Box>
-                <CameraView onAddFabric={handleAddFabric} />
-              </Box>
+              ) : <Navigate to="/login" />
             } />
+
             <Route path="/gallery" element={
-              user ? <FabricGallery userId={user.uid} /> : <Typography sx={{ textAlign: 'center', mt: 4 }}>Login required to view gallery</Typography>
+              user ? <FabricGallery userId={user.uid} /> : <Navigate to="/login" />
             } />
           </Routes>
         </Container>
       </Main>
 
-      <Paper sx={{ position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 1000 }} elevation={3}>
-        <BottomNavigation
-          showLabels
-          value={location.pathname === '/gallery' ? 1 : 0}
-          onChange={(event, newValue) => {
-            if (newValue === 0) navigate('/');
-            else navigate('/gallery');
-          }}
-        >
-          <BottomNavigationAction label="Camera" icon={<CameraAltIcon />} />
-          <BottomNavigationAction label="Gallery" icon={<CollectionsIcon />} />
-        </BottomNavigation>
-      </Paper>
+      {user && (
+        <Paper sx={{ position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 1000 }} elevation={3}>
+          <BottomNavigation
+            showLabels
+            value={location.pathname === '/gallery' ? 1 : 0}
+            onChange={(event, newValue) => {
+              if (newValue === 0) navigate('/');
+              else navigate('/gallery');
+            }}
+          >
+            <BottomNavigationAction label="Camera" icon={<CameraAltIcon />} />
+            <BottomNavigationAction label="Gallery" icon={<CollectionsIcon />} />
+          </BottomNavigation>
+        </Paper>
+      )}
     </ThemeProvider>
   );
 }
