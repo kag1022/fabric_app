@@ -1,50 +1,24 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   Box, Grid, Card, CardMedia, Typography, CardActions,
-  IconButton, CircularProgress, Alert, Button, Dialog, DialogActions,
+  IconButton, CircularProgress, Button, Dialog, DialogActions,
   DialogContent, DialogContentText, DialogTitle, useTheme, useMediaQuery,
   Fade,
 } from '@mui/material';
 import DeleteIcon from '@mui/icons-material/Delete';
 import CollectionsIcon from '@mui/icons-material/Collections';
-import { db, storage } from '../firebase';
-import { collection, query, onSnapshot, orderBy, doc, deleteDoc } from 'firebase/firestore';
-import { ref, deleteObject } from 'firebase/storage';
-import { FabricItem } from '../App';
+import { useLiveQuery } from 'dexie-react-hooks';
+import { db, FabricItem } from '../db';
+import { blobToURL } from '../utils/fileUtils';
 
-interface FabricGalleryProps {
-  userId: string;
-}
-
-const FabricGallery: React.FC<FabricGalleryProps> = ({ userId }) => {
-  const [items, setItems] = useState<FabricItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+const FabricGallery: React.FC = () => {
   const [itemToDelete, setItemToDelete] = useState<FabricItem | null>(null);
 
   const theme = useTheme();
   const fullScreen = useMediaQuery(theme.breakpoints.down('sm'));
 
-  useEffect(() => {
-    if (!userId) return;
-
-    setLoading(true);
-    const q = query(collection(db, "users", userId, "fabrics"), orderBy("createdAt", "desc"));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const fabricsData: FabricItem[] = [];
-      snapshot.forEach((doc) => {
-        fabricsData.push({ id: doc.id, ...doc.data() } as FabricItem);
-      });
-      setItems(fabricsData);
-      setLoading(false);
-    }, (err) => {
-      console.error(err);
-      setError("データの取得に失敗しました。");
-      setLoading(false);
-    });
-
-    return () => unsubscribe();
-  }, [userId]);
+  // DexieのuseLiveQueryフックでデータの変更をリアルタイム監視
+  const items = useLiveQuery(() => db.fabrics.orderBy('createdAt').reverse().toArray());
 
   const handleOpenDeleteDialog = (item: FabricItem) => {
     setItemToDelete(item);
@@ -55,21 +29,19 @@ const FabricGallery: React.FC<FabricGalleryProps> = ({ userId }) => {
   };
 
   const handleDeleteItem = async () => {
-    if (!itemToDelete) return;
+    if (!itemToDelete || !itemToDelete.id) return;
 
     try {
-      await deleteDoc(doc(db, "users", userId, "fabrics", itemToDelete.id));
-      const imageRef = ref(storage, itemToDelete.imageDataUrl);
-      await deleteObject(imageRef);
+      await db.fabrics.delete(itemToDelete.id);
     } catch (error) {
       console.error("Error deleting item: ", error);
-      setError("アイテムの削除に失敗しました。");
+      alert("削除に失敗しました。");
     } finally {
       handleCloseDeleteDialog();
     }
   };
 
-  if (loading) {
+  if (!items) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', my: 4 }}>
         <CircularProgress sx={{ color: '#a5b4fc' }} />
@@ -95,10 +67,8 @@ const FabricGallery: React.FC<FabricGalleryProps> = ({ userId }) => {
         My Fabric Gallery
       </Typography>
 
-      {error && <Alert severity="error" sx={{ mb: 2, borderRadius: 2 }}>{error}</Alert>}
-
       {/* 空状態 */}
-      {items.length === 0 && !error ? (
+      {items.length === 0 ? (
         <Fade in={true} timeout={600}>
           <Box sx={{
             textAlign: 'center',
@@ -128,79 +98,83 @@ const FabricGallery: React.FC<FabricGalleryProps> = ({ userId }) => {
         </Fade>
       ) : (
         <Grid container spacing={2}>
-          {items.map((item, index) => (
-            <Grid item key={item.id} xs={12} sm={6} md={4}>
-              <Fade in={true} timeout={400} style={{ transitionDelay: `${index * 80}ms` }}>
-                <Card sx={{
-                  display: 'flex',
-                  flexDirection: 'column',
-                  height: '100%',
-                  background: 'rgba(30, 30, 50, 0.5)',
-                  backdropFilter: 'blur(12px)',
-                  WebkitBackdropFilter: 'blur(12px)',
-                  border: '1px solid rgba(255, 255, 255, 0.06)',
-                  overflow: 'hidden',
-                  '&:hover': {
-                    transform: 'translateY(-6px)',
-                    boxShadow: `0 12px 40px rgba(0, 0, 0, 0.4), 0 0 20px rgba(${item.dominantRgb.r}, ${item.dominantRgb.g}, ${item.dominantRgb.b}, 0.15)`,
-                    borderColor: `rgba(${item.dominantRgb.r}, ${item.dominantRgb.g}, ${item.dominantRgb.b}, 0.3)`,
-                  },
-                }}>
-                  <CardMedia
-                    component="img"
-                    height="180"
-                    image={item.imageDataUrl}
-                    alt={`布地グループ ${item.group} の画像`}
-                    sx={{ objectFit: 'cover' }}
-                  />
-                  <Box sx={{ p: 2, flexGrow: 1, display: 'flex', flexDirection: 'column' }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1 }}>
-                      {/* グロー付きカラードット */}
-                      <Box
-                        sx={{
-                          width: 28,
-                          height: 28,
-                          backgroundColor: `rgb(${item.dominantRgb.r}, ${item.dominantRgb.g}, ${item.dominantRgb.b})`,
-                          border: '2px solid rgba(255, 255, 255, 0.15)',
-                          borderRadius: '50%',
-                          boxShadow: `0 0 10px rgba(${item.dominantRgb.r}, ${item.dominantRgb.g}, ${item.dominantRgb.b}, 0.4)`,
-                          flexShrink: 0,
-                        }}
-                        aria-label={`主要色: ${item.group}`}
-                      />
-                      <Typography
-                        variant="h6"
-                        component="p"
-                        sx={{ fontWeight: 700, fontSize: '1rem' }}
-                      >
-                        {item.group}
+          {items.map((item, index) => {
+            // Blobから一時的なURLを生成
+            const imageUrl = blobToURL(item.imageBlob);
+            
+            return (
+              <Grid item key={item.id} xs={12} sm={6} md={4}>
+                <Fade in={true} timeout={400} style={{ transitionDelay: `${index * 80}ms` }}>
+                  <Card sx={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    height: '100%',
+                    background: 'rgba(30, 30, 50, 0.5)',
+                    backdropFilter: 'blur(12px)',
+                    WebkitBackdropFilter: 'blur(12px)',
+                    border: '1px solid rgba(255, 255, 255, 0.06)',
+                    overflow: 'hidden',
+                    '&:hover': {
+                      transform: 'translateY(-6px)',
+                      boxShadow: `0 12px 40px rgba(0, 0, 0, 0.4), 0 0 20px rgba(${item.dominantRgb.r}, ${item.dominantRgb.g}, ${item.dominantRgb.b}, 0.15)`,
+                      borderColor: `rgba(${item.dominantRgb.r}, ${item.dominantRgb.g}, ${item.dominantRgb.b}, 0.3)`,
+                    },
+                  }}>
+                    <CardMedia
+                      component="img"
+                      height="180"
+                      image={imageUrl}
+                      alt={`布地グループ ${item.group} の画像`}
+                      sx={{ objectFit: 'cover' }}
+                    />
+                    <Box sx={{ p: 2, flexGrow: 1, display: 'flex', flexDirection: 'column' }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1 }}>
+                        <Box
+                          sx={{
+                            width: 28,
+                            height: 28,
+                            backgroundColor: `rgb(${item.dominantRgb.r}, ${item.dominantRgb.g}, ${item.dominantRgb.b})`,
+                            border: '2px solid rgba(255, 255, 255, 0.15)',
+                            borderRadius: '50%',
+                            boxShadow: `0 0 10px rgba(${item.dominantRgb.r}, ${item.dominantRgb.g}, ${item.dominantRgb.b}, 0.4)`,
+                            flexShrink: 0,
+                          }}
+                          aria-label={`主要色: ${item.group}`}
+                        />
+                        <Typography
+                          variant="h6"
+                          component="p"
+                          sx={{ fontWeight: 700, fontSize: '1rem' }}
+                        >
+                          {item.group}
+                        </Typography>
+                      </Box>
+                      <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.8rem' }}>
+                        {item.hueInfo.name} / {item.valueInfo.name}
                       </Typography>
+                      <Box sx={{ flexGrow: 1 }} />
+                      <CardActions sx={{ justifyContent: 'flex-end', p: 0, pt: 1 }}>
+                        <IconButton
+                          aria-label={`グループ ${item.group} の布地を削除`}
+                          onClick={() => handleOpenDeleteDialog(item)}
+                          size="small"
+                          sx={{
+                            color: 'text.secondary',
+                            '&:hover': {
+                              color: '#f87171',
+                              background: 'rgba(248, 113, 113, 0.1)',
+                            },
+                          }}
+                        >
+                          <DeleteIcon fontSize="small" />
+                        </IconButton>
+                      </CardActions>
                     </Box>
-                    <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.8rem' }}>
-                      {item.hueInfo.name} / {item.valueInfo.name}
-                    </Typography>
-                    <Box sx={{ flexGrow: 1 }} />
-                    <CardActions sx={{ justifyContent: 'flex-end', p: 0, pt: 1 }}>
-                      <IconButton
-                        aria-label={`グループ ${item.group} の布地を削除`}
-                        onClick={() => handleOpenDeleteDialog(item)}
-                        size="small"
-                        sx={{
-                          color: 'text.secondary',
-                          '&:hover': {
-                            color: '#f87171',
-                            background: 'rgba(248, 113, 113, 0.1)',
-                          },
-                        }}
-                      >
-                        <DeleteIcon fontSize="small" />
-                      </IconButton>
-                    </CardActions>
-                  </Box>
-                </Card>
-              </Fade>
-            </Grid>
-          ))}
+                  </Card>
+                </Fade>
+              </Grid>
+            );
+          })}
         </Grid>
       )}
 
@@ -226,7 +200,8 @@ const FabricGallery: React.FC<FabricGalleryProps> = ({ userId }) => {
           </DialogTitle>
           <DialogContent>
             <DialogContentText id="delete-dialog-description">
-              グループ「{itemToDelete.group}」の布地を本当に削除しますか？この操作は元に戻せません。
+              グループ「{itemToDelete.group}」の布地を本当に削除しますか？<br />
+              削除したデータは復元できません。
             </DialogContentText>
           </DialogContent>
           <DialogActions sx={{ px: 3, pb: 2 }}>

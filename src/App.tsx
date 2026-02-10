@@ -1,245 +1,244 @@
-import React, { useState, useEffect } from 'react';
-import { ThemeProvider, createTheme, styled } from '@mui/material/styles';
+import React, { useState } from 'react';
+import { ThemeProvider, createTheme } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
 import Container from '@mui/material/Container';
 import Typography from '@mui/material/Typography';
 import Box from '@mui/material/Box';
+import AppBar from '@mui/material/AppBar';
+import Toolbar from '@mui/material/Toolbar';
+import Grid from '@mui/material/Grid';
 import Paper from '@mui/material/Paper';
-import BottomNavigation from '@mui/material/BottomNavigation';
-import BottomNavigationAction from '@mui/material/BottomNavigationAction';
-import CameraAltIcon from '@mui/icons-material/CameraAlt';
-import CollectionsIcon from '@mui/icons-material/Collections';
-import CircularProgress from '@mui/material/CircularProgress';
+import ColorLensIcon from '@mui/icons-material/ColorLens';
 
-import { Routes, Route, useNavigate, useLocation, Navigate } from 'react-router-dom';
-
-// Firebase
-import { auth } from './firebase';
-import { onAuthStateChanged, User } from 'firebase/auth'; // signInAnonymously removed
-import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
-import { getDownloadURL, ref, uploadString } from 'firebase/storage';
-import { db, storage } from './firebase';
+// Local Database
+import { db } from './db';
+import { dataURLtoBlob } from './utils/fileUtils';
 
 import CameraView from './components/CameraView';
 import FabricGallery from './components/FabricGallery';
-import Login from './components/Login';
 import { ColorAnalysisResult } from './utils/colorUtils';
-
-export interface FabricItem extends ColorAnalysisResult {
-  id: string;
-  imageDataUrl: string;
-  createdAt: any;
-}
 
 const darkTheme = createTheme({
   palette: {
     mode: 'dark',
     primary: {
-      main: '#00e5ff', // Cyberpunk Cyan
+      main: '#a5b4fc', // インディゴ系の明るい色
+      light: '#c7d2fe',
+      dark: '#818cf8',
     },
     secondary: {
-      main: '#ff4081', // Pink accent
+      main: '#c084fc', // パープル系
+      light: '#e9d5ff',
+      dark: '#a855f7',
     },
     background: {
-      default: 'transparent', // Let gradient show through
-      paper: 'rgba(255, 255, 255, 0.05)', // Glass effect base
+      default: '#0f0f1a',
+      paper: 'rgba(30, 30, 45, 0.6)',
     },
     text: {
-      primary: '#ffffff',
-      secondary: 'rgba(255, 255, 255, 0.7)',
+      primary: '#e2e8f0',
+      secondary: '#94a3b8',
     },
   },
   typography: {
     fontFamily: '"Inter", "Noto Sans JP", sans-serif',
-    h3: {
+    h4: {
       fontWeight: 700,
       letterSpacing: '-0.02em',
     },
-    h4: {
+    h5: {
       fontWeight: 600,
       letterSpacing: '-0.01em',
     },
-    button: {
+    h6: {
       fontWeight: 600,
-      textTransform: 'none', // Modern feel
     },
   },
   shape: {
-    borderRadius: 16, // Softer, modern corners
+    borderRadius: 12,
   },
   components: {
-    MuiCssBaseline: {
-      styleOverrides: {
-        body: {
-          backgroundColor: 'transparent', // Handled by index.css
-          scrollbarColor: "#6b6b6b #2b2b2b",
-          "&::-webkit-scrollbar, & *::-webkit-scrollbar": {
-            backgroundColor: "#2b2b2b",
-          },
-          "&::-webkit-scrollbar-thumb, & *::-webkit-scrollbar-thumb": {
-            borderRadius: 8,
-            backgroundColor: "#6b6b6b",
-            minHeight: 24,
-            border: "3px solid #2b2b2b",
-          },
-        },
-      },
-    },
     MuiPaper: {
       styleOverrides: {
         root: {
+          backgroundImage: 'none', // MUIのデフォルトオーバーレイを削除
           backdropFilter: 'blur(16px)',
-          border: '1px solid rgba(255, 255, 255, 0.1)',
-          boxShadow: '0 4px 30px rgba(0, 0, 0, 0.1)',
-        },
-      },
-    },
-    MuiCard: {
-      styleOverrides: {
-        root: {
-          background: 'rgba(255, 255, 255, 0.05)', // Glassy
-          backdropFilter: 'blur(16px)',
-          border: '1px solid rgba(255, 255, 255, 0.1)',
+          WebkitBackdropFilter: 'blur(16px)',
         },
       },
     },
     MuiButton: {
       styleOverrides: {
         root: {
-          borderRadius: 24, // Pill shape
-          padding: '8px 24px',
-          boxShadow: '0 4px 14px 0 rgba(0,0,0,0.3)',
+          textTransform: 'none',
+          fontWeight: 600,
+          borderRadius: 10,
+          padding: '10px 24px',
         },
-        containedPrimary: {
-          background: 'linear-gradient(45deg, #00e5ff 30%, #00b0ff 90%)',
-          color: '#000',
-          fontWeight: 'bold',
+        contained: {
+          background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+          boxShadow: '0 4px 20px rgba(102, 126, 234, 0.3)',
+          '&:hover': {
+            background: 'linear-gradient(135deg, #7c8ef0 0%, #8a5fb5 100%)',
+            boxShadow: '0 6px 28px rgba(102, 126, 234, 0.45)',
+          },
         },
       },
     },
-    MuiBottomNavigation: {
+    MuiCard: {
       styleOverrides: {
         root: {
-          backgroundColor: 'rgba(20, 20, 20, 0.8)',
-          backdropFilter: 'blur(20px)',
-          borderTop: '1px solid rgba(255, 255, 255, 0.1)',
-        }
-      }
-    }
+          backgroundImage: 'none',
+          backdropFilter: 'blur(16px)',
+          WebkitBackdropFilter: 'blur(16px)',
+        },
+      },
+    },
   },
 });
 
-const Main = styled('main')(({ theme }) => ({
-  paddingTop: theme.spacing(4),
-  paddingBottom: theme.spacing(10), // Increased bottom padding for nav bar
-  minHeight: '100vh',
-}));
-
 function App() {
-  const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
-  const navigate = useNavigate();
-  const location = useLocation();
-
-  useEffect(() => {
-    console.error("DEBUG: App useEffect running");
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-      console.error("DEBUG: App onAuthStateChanged callback triggered", currentUser);
-      setUser(currentUser);
-      setLoading(false);
-    });
-    return () => {
-      if (typeof unsubscribe === 'function') {
-        unsubscribe();
-      }
-    };
-  }, []);
+  const [isSaving, setIsSaving] = useState(false);
 
   const handleAddFabric = async (result: ColorAnalysisResult, imageDataUrl: string) => {
-    if (!user) {
-      console.error("User not authenticated.");
-      return;
-    }
+    setIsSaving(true);
     try {
-      const storageRef = ref(storage, `fabrics/${user.uid}/${new Date().toISOString()}.jpg`);
-      await uploadString(storageRef, imageDataUrl, 'data_url');
-      const downloadURL = await getDownloadURL(storageRef);
+      // 画像データをBlobに変換
+      const imageBlob = dataURLtoBlob(imageDataUrl);
 
-      await addDoc(collection(db, "users", user.uid, "fabrics"), {
+      // IndexedDBに保存
+      await db.fabrics.add({
         ...result,
-        imageDataUrl: downloadURL,
-        createdAt: serverTimestamp(),
+        imageBlob,
+        createdAt: new Date(),
       });
 
-      // ギャラリーへ遷移
-      navigate('/gallery');
+      document.getElementById('gallery-section')?.scrollIntoView({ behavior: 'smooth' });
     } catch (error) {
-      console.error("Error saving to Firebase: ", error);
+      console.error("Error saving to IndexedDB: ", error);
+      alert("保存に失敗しました。容量不足の可能性があります。");
+    } finally {
+      setIsSaving(false);
     }
   };
-
-  if (loading) {
-    return (
-      <ThemeProvider theme={darkTheme}>
-        <CssBaseline />
-        <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
-          <CircularProgress />
-        </Box>
-      </ThemeProvider>
-    );
-  }
 
   return (
     <ThemeProvider theme={darkTheme}>
       <CssBaseline />
-      <Main>
-        <Container maxWidth="md">
-          {user && ( // タイトルはログイン時のみ、または適切に配置
-            <Box sx={{ textAlign: 'center', mb: 3 }}>
-              <Typography variant="h5" component="h1" sx={{ fontWeight: 800, background: 'linear-gradient(45deg, #00e5ff, #ff4081)', backgroundClip: 'text', textFillColor: 'transparent', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
-                Fabric Color Classifier
-              </Typography>
-            </Box>
-          )}
 
-          <Routes>
-            <Route path="/login" element={user ? <Navigate to="/" /> : <Login />} />
-
-            <Route path="/" element={
-              user ? (
-                <Box>
-                  <Box sx={{ mb: 2, textAlign: 'center' }}>
-                    <Typography variant="body1" color="text.secondary">
-                      布地の写真を撮って、色で自動的に分類・整理しましょう。
-                    </Typography>
-                  </Box>
-                  <CameraView onAddFabric={handleAddFabric} />
-                </Box>
-              ) : <Navigate to="/login" />
-            } />
-
-            <Route path="/gallery" element={
-              user ? <FabricGallery userId={user.uid} /> : <Navigate to="/login" />
-            } />
-          </Routes>
-        </Container>
-      </Main>
-
-      {user && (
-        <Paper sx={{ position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 1000 }} elevation={3}>
-          <BottomNavigation
-            showLabels
-            value={location.pathname === '/gallery' ? 1 : 0}
-            onChange={(event, newValue) => {
-              if (newValue === 0) navigate('/');
-              else navigate('/gallery');
+      {/* --- Glass AppBar --- */}
+      <AppBar
+        position="sticky"
+        elevation={0}
+        sx={{
+          background: 'rgba(15, 15, 26, 0.7)',
+          backdropFilter: 'blur(20px)',
+          WebkitBackdropFilter: 'blur(20px)',
+          borderBottom: '1px solid rgba(255, 255, 255, 0.06)',
+        }}
+      >
+        <Toolbar>
+          <ColorLensIcon sx={{
+            mr: 1.5,
+            fontSize: 28,
+            background: 'linear-gradient(135deg, #a5b4fc, #c084fc)',
+            WebkitBackgroundClip: 'text',
+            WebkitTextFillColor: 'transparent',
+          }} />
+          <Typography
+            variant="h6"
+            component="div"
+            sx={{
+              flexGrow: 1,
+              fontWeight: 700,
+              letterSpacing: '-0.01em',
+              background: 'linear-gradient(135deg, #e2e8f0, #a5b4fc)',
+              WebkitBackgroundClip: 'text',
+              WebkitTextFillColor: 'transparent',
             }}
           >
-            <BottomNavigationAction label="Camera" icon={<CameraAltIcon />} />
-            <BottomNavigationAction label="Gallery" icon={<CollectionsIcon />} />
-          </BottomNavigation>
-        </Paper>
-      )}
+            Fabric Color Classifier
+          </Typography>
+        </Toolbar>
+      </AppBar>
+
+      {/* --- Main Content --- */}
+      <Box component="main" sx={{ py: { xs: 3, md: 5 } }}>
+        <Container maxWidth="lg">
+
+          {/* --- Hero Header --- */}
+          <Box
+            className="animate-fade-in-up"
+            sx={{
+              textAlign: 'center',
+              mb: { xs: 4, md: 6 },
+              pt: 2,
+            }}
+          >
+            <Typography
+              variant="h4"
+              component="h1"
+              gutterBottom
+              className="gradient-text"
+              sx={{
+                fontSize: { xs: '1.6rem', md: '2.2rem' },
+                fontWeight: 800,
+              }}
+            >
+              布地の色を分類・整理
+            </Typography>
+            <Typography
+              variant="body1"
+              sx={{
+                color: 'text.secondary',
+                maxWidth: 480,
+                mx: 'auto',
+                animation: 'fadeIn 0.6s ease-out 0.2s both',
+                lineHeight: 1.7,
+              }}
+            >
+              布地の写真を撮って、主要な色を自動で判別し、ギャラリーに整理します。
+              データはすべてお使いの端末に保存されます。
+            </Typography>
+          </Box>
+
+          {/* --- Two-Column Layout --- */}
+          <Grid container spacing={4} alignItems="flex-start">
+            <Grid item xs={12} md={5}>
+              <Paper
+                className="glass-panel animate-fade-in-up"
+                sx={{
+                  p: { xs: 2, sm: 3 },
+                  height: '100%',
+                  animationDelay: '0.1s',
+                }}
+              >
+                <section aria-labelledby="camera-heading">
+                  <h2 id="camera-heading" style={{ display: 'none' }}>撮影エリア</h2>
+                  <CameraView onAddFabric={handleAddFabric} isSaving={isSaving} />
+                </section>
+              </Paper>
+            </Grid>
+
+            <Grid item xs={12} md={7}>
+              <Paper
+                id="gallery-section"
+                className="glass-panel animate-fade-in-up"
+                sx={{
+                  p: { xs: 2, sm: 3 },
+                  height: '100%',
+                  animationDelay: '0.2s',
+                }}
+              >
+                <section aria-labelledby="gallery-heading">
+                  <h2 id="gallery-heading" style={{ display: 'none' }}>ギャラリーエリア</h2>
+                  <FabricGallery />
+                </section>
+              </Paper>
+            </Grid>
+          </Grid>
+        </Container>
+      </Box>
     </ThemeProvider>
   );
 }
