@@ -12,6 +12,7 @@ import {
 import { ThemeProvider, createTheme, responsiveFontSizes } from '@mui/material/styles';
 import ArrowBackOutlinedIcon from '@mui/icons-material/ArrowBackOutlined';
 import { SpeedInsights } from '@vercel/speed-insights/react';
+import { Analytics } from '@vercel/analytics/react';
 
 import CameraView from './components/CameraView';
 import { loadDeviceSettings, saveDeviceSettings } from './services/deviceSettings';
@@ -227,6 +228,7 @@ function App() {
           </Stack>
         </Container>
       </Box>
+      <Analytics />
       <SpeedInsights />
     </ThemeProvider>
   );
