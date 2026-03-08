@@ -1,452 +1,235 @@
-import { startTransition, useEffect, useId, useState, type ChangeEvent } from 'react';
+import React, { useState } from 'react';
 import {
-  Alert,
-  Box,
-  Button,
-  CircularProgress,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogContentText,
-  DialogTitle,
-  Paper,
-  Stack,
-  Typography,
+  Box, Grid, Card, CardMedia, Typography, CardActions,
+  IconButton, CircularProgress, Button, Dialog, DialogActions,
+  DialogContent, DialogContentText, DialogTitle, useTheme, useMediaQuery,
+  Fade,
 } from '@mui/material';
-import DeleteSweepOutlinedIcon from '@mui/icons-material/DeleteSweepOutlined';
-import DeleteOutlineOutlinedIcon from '@mui/icons-material/DeleteOutlineOutlined';
-import DownloadOutlinedIcon from '@mui/icons-material/DownloadOutlined';
-import UploadFileOutlinedIcon from '@mui/icons-material/UploadFileOutlined';
+import DeleteIcon from '@mui/icons-material/Delete';
+import CollectionsIcon from '@mui/icons-material/Collections';
+import { useLiveQuery } from 'dexie-react-hooks';
+import { db, FabricItem } from '../db';
+import { blobToURL } from '../utils/fileUtils';
 
-import {
-  buildLocalHistoryExport,
-  clearLocalHistory,
-  deleteLocalFabricRecord,
-  EXPORT_FILE_NAME,
-  importLocalHistoryExport,
-  isLocalHistorySupported,
-  listLocalFabricRecords,
-  MAX_IMPORT_FILE_BYTES,
-  subscribeToLocalHistory,
-} from '../services/localHistory';
-import type { LocalFabricRecord } from '../types/fabric';
+const FabricGallery: React.FC = () => {
+  const [itemToDelete, setItemToDelete] = useState<FabricItem | null>(null);
 
-function formatCreatedAt(item: LocalFabricRecord): string {
-  return new Date(item.createdAtMs).toLocaleString('ja-JP', {
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    month: 'numeric',
-  });
-}
+  const theme = useTheme();
+  const fullScreen = useMediaQuery(theme.breakpoints.down('sm'));
 
-function downloadExportFile(fileName: string, content: string) {
-  const blob = new Blob([content], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement('a');
-  anchor.href = url;
-  anchor.download = fileName;
-  anchor.click();
-  window.setTimeout(() => URL.revokeObjectURL(url), 0);
-}
+  // DexieのuseLiveQueryフックでデータの変更をリアルタイム監視
+  const items = useLiveQuery(() => db.fabrics.orderBy('createdAt').reverse().toArray());
 
-function HistoryImage({ record }: { record: LocalFabricRecord }) {
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const handleOpenDeleteDialog = (item: FabricItem) => {
+    setItemToDelete(item);
+  };
 
-  useEffect(() => {
-    if (typeof URL.createObjectURL !== 'function') {
-      setPreviewUrl(null);
-      return;
+  const handleCloseDeleteDialog = () => {
+    setItemToDelete(null);
+  };
+
+  const handleDeleteItem = async () => {
+    if (!itemToDelete || !itemToDelete.id) return;
+
+    try {
+      await db.fabrics.delete(itemToDelete.id);
+    } catch (error) {
+      console.error("Error deleting item: ", error);
+      alert("削除に失敗しました。");
+    } finally {
+      handleCloseDeleteDialog();
     }
+  };
 
-    const nextUrl = URL.createObjectURL(record.previewBlob);
-    setPreviewUrl(nextUrl);
-
-    return () => {
-      URL.revokeObjectURL(nextUrl);
-    };
-  }, [record.previewBlob]);
-
-  if (!previewUrl) {
+  if (!items) {
     return (
-      <Box
-        sx={{
-          alignItems: 'center',
-          display: 'flex',
-          height: '100%',
-          justifyContent: 'center',
-          minHeight: 200,
-          p: 2,
-        }}
-      >
-        <Typography color="text.secondary">画像を表示できません</Typography>
+      <Box sx={{ display: 'flex', justifyContent: 'center', my: 4 }}>
+        <CircularProgress sx={{ color: '#a5b4fc' }} />
       </Box>
     );
   }
 
   return (
-    <Box
-      component="img"
-      src={previewUrl}
-      alt={`グループ ${record.group} の布`}
-      sx={{
-        display: 'block',
-        height: '100%',
-        maxHeight: { xs: 220, md: 280 },
-        objectFit: 'cover',
-        width: '100%',
-      }}
-    />
-  );
-}
+    <Box>
+      {/* ヘッダー */}
+      <Typography
+        variant="h5"
+        component="h2"
+        gutterBottom
+        sx={{
+          textAlign: 'center',
+          fontWeight: 700,
+          background: 'linear-gradient(135deg, #e2e8f0, #a5b4fc)',
+          WebkitBackgroundClip: 'text',
+          WebkitTextFillColor: 'transparent',
+        }}
+      >
+        My Fabric Gallery
+      </Typography>
 
-type FeedbackState = {
-  message: string;
-  severity: 'error' | 'info' | 'success';
-} | null;
-
-function FabricGallery() {
-  const canSaveHistory = isLocalHistorySupported();
-  const [items, setItems] = useState<LocalFabricRecord[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [feedback, setFeedback] = useState<FeedbackState>(null);
-  const [itemToDelete, setItemToDelete] = useState<LocalFabricRecord | null>(null);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
-  const [isClearingAll, setIsClearingAll] = useState(false);
-  const [isClearDialogOpen, setIsClearDialogOpen] = useState(false);
-  const importInputId = useId();
-
-  useEffect(() => {
-    if (!canSaveHistory) {
-      setItems([]);
-      setLoading(false);
-      return;
-    }
-
-    let active = true;
-
-    const loadItems = async () => {
-      try {
-        const nextItems = await listLocalFabricRecords();
-        if (!active) {
-          return;
-        }
-
-        startTransition(() => {
-          setItems(nextItems);
-          setFeedback((currentFeedback) =>
-            currentFeedback?.severity === 'error' ? null : currentFeedback,
-          );
-          setLoading(false);
-        });
-      } catch (loadError) {
-        console.error('Failed to load local history.', loadError);
-        if (!active) {
-          return;
-        }
-        setFeedback({
-          message: '記録の読み込みに失敗しました。ブラウザの保存設定を確認してください。',
-          severity: 'error',
-        });
-        setLoading(false);
-      }
-    };
-
-    setLoading(true);
-    void loadItems();
-
-    const unsubscribe = subscribeToLocalHistory(() => {
-      void loadItems();
-    });
-
-    return () => {
-      active = false;
-      unsubscribe();
-    };
-  }, [canSaveHistory]);
-
-  const handleDeleteItem = async () => {
-    if (!itemToDelete) {
-      return;
-    }
-
-    try {
-      setDeletingId(itemToDelete.id);
-      await deleteLocalFabricRecord(itemToDelete.id);
-      setItemToDelete(null);
-      setFeedback({
-        message: '記録を削除しました。',
-        severity: 'info',
-      });
-    } catch (deleteError) {
-      console.error('Failed to delete local history item.', deleteError);
-      setFeedback({
-        message: '削除に失敗しました。もう一度お試しください。',
-        severity: 'error',
-      });
-    } finally {
-      setDeletingId(null);
-    }
-  };
-
-  const handleExport = async () => {
-    try {
-      const payload = await buildLocalHistoryExport();
-      downloadExportFile(EXPORT_FILE_NAME, JSON.stringify(payload, null, 2));
-      setFeedback({
-        message: '履歴を書き出しました。',
-        severity: 'success',
-      });
-    } catch (exportError) {
-      console.error('Failed to export local history.', exportError);
-      setFeedback({
-        message: '履歴の書き出しに失敗しました。',
-        severity: 'error',
-      });
-    }
-  };
-
-  const handleImportSelected = async (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    event.target.value = '';
-
-    if (!file) {
-      return;
-    }
-
-    if (file.size > MAX_IMPORT_FILE_BYTES) {
-      setFeedback({
-        message: '取り込みファイルが大きすぎます。20MB 以下の JSON を選んでください。',
-        severity: 'error',
-      });
-      return;
-    }
-
-    try {
-      const imported = await importLocalHistoryExport(JSON.parse(await file.text()) as unknown);
-      setFeedback({
-        message:
-          imported.skippedCount > 0
-            ? `${imported.importedCount}件を取り込み、${imported.skippedCount}件は重複のためスキップしました。`
-            : `${imported.importedCount}件を取り込みました。`,
-        severity: imported.importedCount > 0 ? 'success' : 'info',
-      });
-    } catch (importError) {
-      console.error('Failed to import local history.', importError);
-      setFeedback({
-        message: '取り込みに失敗しました。正しい JSON ファイルを選んでください。',
-        severity: 'error',
-      });
-    }
-  };
-
-  const handleClearAll = async () => {
-    try {
-      setIsClearingAll(true);
-      await clearLocalHistory();
-      setIsClearDialogOpen(false);
-      setFeedback({
-        message: 'この端末の履歴をすべて消しました。',
-        severity: 'info',
-      });
-    } catch (clearError) {
-      console.error('Failed to clear local history.', clearError);
-      setFeedback({
-        message: '履歴の一括削除に失敗しました。',
-        severity: 'error',
-      });
-    } finally {
-      setIsClearingAll(false);
-    }
-  };
-
-  if (loading) {
-    return (
-      <Paper sx={{ p: 4 }}>
-        <Stack alignItems="center" spacing={2}>
-          <CircularProgress size={52} />
-          <Typography variant="h3">記録を読み込んでいます</Typography>
-        </Stack>
-      </Paper>
-    );
-  }
-
-  return (
-    <Stack spacing={2.5}>
-      <Paper sx={{ p: { xs: 2.5, md: 3.5 } }}>
-        <Stack spacing={1}>
-          <Typography variant="h2">最近の記録</Typography>
-          <Typography color="text.secondary">
-            主機能はしわけ支援です。ここでは直近の保存結果だけを大きく確認できます。
-          </Typography>
-        </Stack>
-      </Paper>
-
-      {feedback && (
-        <Alert severity={feedback.severity} sx={{ borderRadius: 3 }}>
-          {feedback.message}
-        </Alert>
-      )}
-
-      {!canSaveHistory && (
-        <Paper sx={{ p: 4 }}>
-          <Typography variant="h3">記録保存は使えません</Typography>
-          <Typography color="text.secondary" sx={{ mt: 1.5 }}>
-            このブラウザでは IndexedDB が使えないため、仕分け案内だけ利用できます。
-          </Typography>
-        </Paper>
-      )}
-
-      {canSaveHistory && (
-        <Paper sx={{ p: { xs: 2.5, md: 3 } }}>
-          <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5}>
-            <Button
-              disabled={items.length === 0}
-              onClick={handleExport}
-              startIcon={<DownloadOutlinedIcon />}
-              variant="contained"
-            >
-              履歴を書き出す
-            </Button>
-            <Button
-              component="label"
-              htmlFor={importInputId}
-              startIcon={<UploadFileOutlinedIcon />}
-              variant="outlined"
-            >
-              履歴を読み込む
-            </Button>
-            <Button
-              color="error"
-              disabled={items.length === 0}
-              onClick={() => setIsClearDialogOpen(true)}
-              startIcon={<DeleteSweepOutlinedIcon />}
-              variant="outlined"
-            >
-              この端末の履歴を全部消す
-            </Button>
-          </Stack>
-          <input accept="application/json,.json" hidden id={importInputId} onChange={handleImportSelected} type="file" />
-        </Paper>
-      )}
-
-      {canSaveHistory && items.length === 0 ? (
-        <Paper sx={{ p: 4 }}>
-          <Typography variant="h3">まだ記録はありません</Typography>
-          <Typography color="text.secondary" sx={{ mt: 1.5 }}>
-            しわけ画面から写真を撮って「この端末に保存」を押すと、ここに最近の記録が表示されます。
-          </Typography>
-        </Paper>
-      ) : canSaveHistory ? (
-        <Stack spacing={2}>
-          {items.map((item) => (
-            <Paper key={item.id} sx={{ overflow: 'hidden' }}>
-              <Stack direction={{ xs: 'column', md: 'row' }} sx={{ minHeight: { md: 240 } }}>
-                <Box
-                  sx={{
-                    backgroundColor: '#dbe3e7',
-                    minWidth: { md: 280 },
-                    width: { xs: '100%', md: 280 },
-                  }}
-                >
-                  <HistoryImage record={item} />
-                </Box>
-
-                <Stack spacing={2} sx={{ flexGrow: 1, p: { xs: 2.5, md: 3 } }}>
-                  <Stack
-                    direction={{ xs: 'column', sm: 'row' }}
-                    spacing={1.5}
-                    sx={{ alignItems: { sm: 'center' }, justifyContent: 'space-between' }}
-                  >
-                    <Box>
-                      <Typography color="text.secondary" fontWeight={700}>
-                        保存日時
+      {/* 空状態 */}
+      {items.length === 0 ? (
+        <Fade in={true} timeout={600}>
+          <Box sx={{
+            textAlign: 'center',
+            py: 6,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: 2,
+          }}>
+            <Box sx={{
+              width: 80,
+              height: 80,
+              borderRadius: '50%',
+              background: 'rgba(165, 180, 252, 0.08)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              border: '1px dashed rgba(165, 180, 252, 0.3)',
+            }}>
+              <CollectionsIcon sx={{ fontSize: 36, color: 'rgba(165, 180, 252, 0.4)' }} />
+            </Box>
+            <Typography color="text.secondary" sx={{ lineHeight: 1.7 }}>
+              ギャラリーは空です。<br />
+              布地を撮影して追加してください。
+            </Typography>
+          </Box>
+        </Fade>
+      ) : (
+        <Grid container spacing={2}>
+          {items.map((item, index) => {
+            // Blobから一時的なURLを生成
+            const imageUrl = blobToURL(item.imageBlob);
+            
+            return (
+              <Grid item key={item.id} xs={12} sm={6} md={4}>
+                <Fade in={true} timeout={400} style={{ transitionDelay: `${index * 80}ms` }}>
+                  <Card sx={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    height: '100%',
+                    background: 'rgba(30, 30, 50, 0.5)',
+                    backdropFilter: 'blur(12px)',
+                    WebkitBackdropFilter: 'blur(12px)',
+                    border: '1px solid rgba(255, 255, 255, 0.06)',
+                    overflow: 'hidden',
+                    '&:hover': {
+                      transform: 'translateY(-6px)',
+                      boxShadow: `0 12px 40px rgba(0, 0, 0, 0.4), 0 0 20px rgba(${item.dominantRgb.r}, ${item.dominantRgb.g}, ${item.dominantRgb.b}, 0.15)`,
+                      borderColor: `rgba(${item.dominantRgb.r}, ${item.dominantRgb.g}, ${item.dominantRgb.b}, 0.3)`,
+                    },
+                  }}>
+                    <CardMedia
+                      component="img"
+                      height="180"
+                      image={imageUrl}
+                      alt={`布地グループ ${item.group} の画像`}
+                      sx={{ objectFit: 'cover' }}
+                    />
+                    <Box sx={{ p: 2, flexGrow: 1, display: 'flex', flexDirection: 'column' }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1 }}>
+                        <Box
+                          sx={{
+                            width: 28,
+                            height: 28,
+                            backgroundColor: `rgb(${item.dominantRgb.r}, ${item.dominantRgb.g}, ${item.dominantRgb.b})`,
+                            border: '2px solid rgba(255, 255, 255, 0.15)',
+                            borderRadius: '50%',
+                            boxShadow: `0 0 10px rgba(${item.dominantRgb.r}, ${item.dominantRgb.g}, ${item.dominantRgb.b}, 0.4)`,
+                            flexShrink: 0,
+                          }}
+                          aria-label={`主要色: ${item.group}`}
+                        />
+                        <Typography
+                          variant="h6"
+                          component="p"
+                          sx={{ fontWeight: 700, fontSize: '1rem' }}
+                        >
+                          {item.group}
+                        </Typography>
+                      </Box>
+                      <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.8rem' }}>
+                        {item.hueInfo.name} / {item.valueInfo.name}
                       </Typography>
-                      <Typography sx={{ fontSize: '1.15rem', fontWeight: 800 }}>
-                        {formatCreatedAt(item)}
-                      </Typography>
+                      <Box sx={{ flexGrow: 1 }} />
+                      <CardActions sx={{ justifyContent: 'flex-end', p: 0, pt: 1 }}>
+                        <IconButton
+                          aria-label={`グループ ${item.group} の布地を削除`}
+                          onClick={() => handleOpenDeleteDialog(item)}
+                          size="small"
+                          sx={{
+                            color: 'text.secondary',
+                            '&:hover': {
+                              color: '#f87171',
+                              background: 'rgba(248, 113, 113, 0.1)',
+                            },
+                          }}
+                        >
+                          <DeleteIcon fontSize="small" />
+                        </IconButton>
+                      </CardActions>
                     </Box>
-                    <Paper
-                      sx={{
-                        backgroundColor: 'secondary.main',
-                        color: '#21313c',
-                        px: 2,
-                        py: 1,
-                        width: 'fit-content',
-                      }}
-                    >
-                      <Typography sx={{ fontSize: '1.5rem', fontWeight: 900 }}>{item.group}</Typography>
-                    </Paper>
-                  </Stack>
+                  </Card>
+                </Fade>
+              </Grid>
+            );
+          })}
+        </Grid>
+      )}
 
-                  <Stack spacing={1}>
-                    <Typography sx={{ fontSize: '1.2rem' }}>
-                      色の名前: <strong>{item.hueInfo.name}</strong>
-                    </Typography>
-                    <Typography sx={{ fontSize: '1.2rem' }}>
-                      明るさ: <strong>{item.valueInfo.name}</strong>
-                    </Typography>
-                    <Typography sx={{ fontSize: '1.2rem' }}>
-                      鮮やかさ: <strong>{item.saturationInfo.name}</strong>
-                    </Typography>
-                  </Stack>
-
-                  <Button
-                    color="error"
-                    onClick={() => setItemToDelete(item)}
-                    startIcon={<DeleteOutlineOutlinedIcon />}
-                    sx={{ alignSelf: 'flex-start' }}
-                    variant="outlined"
-                  >
-                    この記録を削除
-                  </Button>
-                </Stack>
-              </Stack>
-            </Paper>
-          ))}
-        </Stack>
-      ) : null}
-
-      <Dialog onClose={() => setItemToDelete(null)} open={Boolean(itemToDelete)}>
-        <DialogTitle>記録を削除しますか</DialogTitle>
-        <DialogContent>
-          <DialogContentText>
-            グループ {itemToDelete?.group} の記録を削除します。この操作は元に戻せません。
-          </DialogContentText>
-        </DialogContent>
-        <DialogActions sx={{ px: 3, pb: 3 }}>
-          <Button onClick={() => setItemToDelete(null)} variant="outlined">
-            やめる
-          </Button>
-          <Button
-            color="error"
-            disabled={deletingId === itemToDelete?.id}
-            onClick={handleDeleteItem}
-            variant="contained"
-          >
-            {deletingId === itemToDelete?.id ? '削除しています' : '削除する'}
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      <Dialog onClose={() => setIsClearDialogOpen(false)} open={isClearDialogOpen}>
-        <DialogTitle>この端末の履歴をすべて削除しますか</DialogTitle>
-        <DialogContent>
-          <DialogContentText>
-            保存した履歴をすべて削除します。この操作は元に戻せません。
-          </DialogContentText>
-        </DialogContent>
-        <DialogActions sx={{ px: 3, pb: 3 }}>
-          <Button onClick={() => setIsClearDialogOpen(false)} variant="outlined">
-            やめる
-          </Button>
-          <Button color="error" disabled={isClearingAll} onClick={handleClearAll} variant="contained">
-            {isClearingAll ? '削除しています' : 'すべて削除する'}
-          </Button>
-        </DialogActions>
-      </Dialog>
-    </Stack>
+      {/* 削除ダイアログ */}
+      {itemToDelete && (
+        <Dialog
+          open={!!itemToDelete}
+          onClose={handleCloseDeleteDialog}
+          fullScreen={fullScreen}
+          aria-labelledby="delete-dialog-title"
+          aria-describedby="delete-dialog-description"
+          PaperProps={{
+            sx: {
+              background: 'rgba(30, 30, 50, 0.95)',
+              backdropFilter: 'blur(20px)',
+              border: '1px solid rgba(255, 255, 255, 0.08)',
+              borderRadius: 3,
+            },
+          }}
+        >
+          <DialogTitle id="delete-dialog-title" sx={{ fontWeight: 700 }}>
+            アイテムを削除
+          </DialogTitle>
+          <DialogContent>
+            <DialogContentText id="delete-dialog-description">
+              グループ「{itemToDelete.group}」の布地を本当に削除しますか？<br />
+              削除したデータは復元できません。
+            </DialogContentText>
+          </DialogContent>
+          <DialogActions sx={{ px: 3, pb: 2 }}>
+            <Button
+              onClick={handleCloseDeleteDialog}
+              sx={{ color: 'text.secondary' }}
+            >
+              キャンセル
+            </Button>
+            <Button
+              onClick={handleDeleteItem}
+              variant="contained"
+              autoFocus
+              sx={{
+                background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
+                boxShadow: '0 4px 16px rgba(239, 68, 68, 0.3)',
+                '&:hover': {
+                  background: 'linear-gradient(135deg, #f87171 0%, #ef4444 100%)',
+                },
+              }}
+            >
+              削除
+            </Button>
+          </DialogActions>
+        </Dialog>
+      )}
+    </Box>
   );
-}
+};
 
 export default FabricGallery;

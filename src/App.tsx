@@ -1,168 +1,242 @@
-import { Suspense, lazy } from 'react';
-import { Link as RouterLink, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
-import {
-  Alert,
-  Box,
-  Button,
-  CircularProgress,
-  Container,
-  CssBaseline,
-  Paper,
-  Stack,
-  Typography,
-} from '@mui/material';
-import { ThemeProvider, createTheme, responsiveFontSizes } from '@mui/material/styles';
-import HistoryOutlinedIcon from '@mui/icons-material/HistoryOutlined';
-import CameraAltOutlinedIcon from '@mui/icons-material/CameraAltOutlined';
+import React, { useState } from 'react';
+import { ThemeProvider, createTheme } from '@mui/material/styles';
+import CssBaseline from '@mui/material/CssBaseline';
+import Container from '@mui/material/Container';
+import Typography from '@mui/material/Typography';
+import Box from '@mui/material/Box';
+import AppBar from '@mui/material/AppBar';
+import Toolbar from '@mui/material/Toolbar';
+import Grid from '@mui/material/Grid';
+import Paper from '@mui/material/Paper';
+import ColorLensIcon from '@mui/icons-material/ColorLens';
+
+// Local Database
+import { db } from './db';
+import { dataURLtoBlob } from './utils/fileUtils';
 
 import CameraView from './components/CameraView';
-import { isLocalHistorySupported } from './services/localHistory';
+import FabricGallery from './components/FabricGallery';
+import { ColorAnalysisResult } from './utils/colorUtils';
 
-const FabricGallery = lazy(() => import('./components/FabricGallery'));
-
-let appTheme = createTheme({
+const darkTheme = createTheme({
   palette: {
-    mode: 'light',
+    mode: 'dark',
     primary: {
-      main: '#156f5b',
-      dark: '#0f5645',
-      contrastText: '#ffffff',
+      main: '#a5b4fc', // インディゴ系の明るい色
+      light: '#c7d2fe',
+      dark: '#818cf8',
     },
     secondary: {
-      main: '#f2a65a',
-      dark: '#c67a2a',
+      main: '#c084fc', // パープル系
+      light: '#e9d5ff',
+      dark: '#a855f7',
     },
     background: {
-      default: '#f7f2e8',
-      paper: 'rgba(255, 255, 255, 0.92)',
+      default: '#0f0f1a',
+      paper: 'rgba(30, 30, 45, 0.6)',
     },
     text: {
-      primary: '#21313c',
-      secondary: '#4d5d65',
+      primary: '#e2e8f0',
+      secondary: '#94a3b8',
+    },
+  },
+  typography: {
+    fontFamily: '"Inter", "Noto Sans JP", sans-serif',
+    h4: {
+      fontWeight: 700,
+      letterSpacing: '-0.02em',
+    },
+    h5: {
+      fontWeight: 600,
+      letterSpacing: '-0.01em',
+    },
+    h6: {
+      fontWeight: 600,
     },
   },
   shape: {
-    borderRadius: 24,
-  },
-  typography: {
-    fontFamily: '"Noto Sans JP", sans-serif',
-    h1: {
-      fontSize: 'clamp(2.2rem, 4vw, 3.6rem)',
-      fontWeight: 900,
-      lineHeight: 1.15,
-    },
-    h2: {
-      fontSize: 'clamp(1.8rem, 3vw, 2.5rem)',
-      fontWeight: 800,
-      lineHeight: 1.2,
-    },
-    h3: {
-      fontSize: 'clamp(1.5rem, 2.5vw, 2rem)',
-      fontWeight: 800,
-    },
-    button: {
-      fontSize: '1.1rem',
-      fontWeight: 800,
-      textTransform: 'none',
-    },
+    borderRadius: 12,
   },
   components: {
-    MuiButton: {
-      styleOverrides: {
-        root: {
-          borderRadius: 18,
-          minHeight: 56,
-          paddingInline: 20,
-        },
-      },
-    },
     MuiPaper: {
       styleOverrides: {
         root: {
-          backdropFilter: 'blur(12px)',
-          border: '1px solid rgba(33, 49, 60, 0.08)',
-          boxShadow: '0 18px 45px rgba(60, 72, 82, 0.08)',
+          backgroundImage: 'none', // MUIのデフォルトオーバーレイを削除
+          backdropFilter: 'blur(16px)',
+          WebkitBackdropFilter: 'blur(16px)',
+        },
+      },
+    },
+    MuiButton: {
+      styleOverrides: {
+        root: {
+          textTransform: 'none',
+          fontWeight: 600,
+          borderRadius: 10,
+          padding: '10px 24px',
+        },
+        contained: {
+          background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+          boxShadow: '0 4px 20px rgba(102, 126, 234, 0.3)',
+          '&:hover': {
+            background: 'linear-gradient(135deg, #7c8ef0 0%, #8a5fb5 100%)',
+            boxShadow: '0 6px 28px rgba(102, 126, 234, 0.45)',
+          },
+        },
+      },
+    },
+    MuiCard: {
+      styleOverrides: {
+        root: {
+          backgroundImage: 'none',
+          backdropFilter: 'blur(16px)',
+          WebkitBackdropFilter: 'blur(16px)',
         },
       },
     },
   },
 });
 
-appTheme = responsiveFontSizes(appTheme);
-
 function App() {
-  const canSaveHistory = isLocalHistorySupported();
-  const location = useLocation();
-  const navigate = useNavigate();
+  const [isSaving, setIsSaving] = useState(false);
+
+  const handleAddFabric = async (result: ColorAnalysisResult, imageDataUrl: string) => {
+    setIsSaving(true);
+    try {
+      // 画像データをBlobに変換
+      const imageBlob = dataURLtoBlob(imageDataUrl);
+
+      // IndexedDBに保存
+      await db.fabrics.add({
+        ...result,
+        imageBlob,
+        createdAt: new Date(),
+      });
+
+      document.getElementById('gallery-section')?.scrollIntoView({ behavior: 'smooth' });
+    } catch (error) {
+      console.error("Error saving to IndexedDB: ", error);
+      alert("保存に失敗しました。容量不足の可能性があります。");
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   return (
-    <ThemeProvider theme={appTheme}>
+    <ThemeProvider theme={darkTheme}>
       <CssBaseline />
-      <Box sx={{ minHeight: '100vh', pb: 6, pt: { xs: 3, md: 5 } }}>
+
+      {/* --- Glass AppBar --- */}
+      <AppBar
+        position="sticky"
+        elevation={0}
+        sx={{
+          background: 'rgba(15, 15, 26, 0.7)',
+          backdropFilter: 'blur(20px)',
+          WebkitBackdropFilter: 'blur(20px)',
+          borderBottom: '1px solid rgba(255, 255, 255, 0.06)',
+        }}
+      >
+        <Toolbar>
+          <ColorLensIcon sx={{
+            mr: 1.5,
+            fontSize: 28,
+            background: 'linear-gradient(135deg, #a5b4fc, #c084fc)',
+            WebkitBackgroundClip: 'text',
+            WebkitTextFillColor: 'transparent',
+          }} />
+          <Typography
+            variant="h6"
+            component="div"
+            sx={{
+              flexGrow: 1,
+              fontWeight: 700,
+              letterSpacing: '-0.01em',
+              background: 'linear-gradient(135deg, #e2e8f0, #a5b4fc)',
+              WebkitBackgroundClip: 'text',
+              WebkitTextFillColor: 'transparent',
+            }}
+          >
+            Fabric Color Classifier
+          </Typography>
+        </Toolbar>
+      </AppBar>
+
+      {/* --- Main Content --- */}
+      <Box component="main" sx={{ py: { xs: 3, md: 5 } }}>
         <Container maxWidth="lg">
-          <Stack spacing={3}>
-            <Paper sx={{ overflow: 'hidden', p: { xs: 3, md: 4 } }}>
-              <Stack spacing={2.5}>
-                <Typography component="h1" variant="h1">
-                  ぬの しわけ サポート
-                </Typography>
-                <Typography color="text.secondary" sx={{ fontSize: '1.15rem', maxWidth: 720 }}>
-                  色の見分けがむずかしいときに、写真からしわけ先を大きく案内します。操作は
-                  3 ステップだけです。
-                </Typography>
-                <Stack
-                  alignItems={{ sm: 'center' }}
-                  direction={{ xs: 'column', sm: 'row' }}
-                  spacing={1.5}
-                >
-                  <Button
-                    color={location.pathname === '/history' ? 'secondary' : 'primary'}
-                    component={RouterLink}
-                    startIcon={
-                      location.pathname === '/history' ? (
-                        <CameraAltOutlinedIcon />
-                      ) : (
-                        <HistoryOutlinedIcon />
-                      )
-                    }
-                    to={location.pathname === '/history' ? '/' : '/history'}
-                    variant="contained"
-                  >
-                    {location.pathname === '/history' ? 'しわけ画面へ戻る' : '最近の記録を見る'}
-                  </Button>
-                  <Typography color="text.secondary">
-                    記録はこの端末の中だけに残ります。必要なときだけ書き出して持ち出せます。
-                  </Typography>
-                </Stack>
-              </Stack>
-            </Paper>
 
-            {!canSaveHistory && (
-              <Alert severity="warning" sx={{ borderRadius: 4 }}>
-                このブラウザでは端末内の記録保存が使えません。仕分け案内だけ利用できます。
-              </Alert>
-            )}
-
-            <Suspense
-              fallback={
-                <Paper sx={{ p: 4 }}>
-                  <Stack alignItems="center" spacing={2}>
-                    <CircularProgress size={52} />
-                    <Typography variant="h3">記録画面を準備しています</Typography>
-                  </Stack>
-                </Paper>
-              }
+          {/* --- Hero Header --- */}
+          <Box
+            className="animate-fade-in-up"
+            sx={{
+              textAlign: 'center',
+              mb: { xs: 4, md: 6 },
+              pt: 2,
+            }}
+          >
+            <Typography
+              variant="h4"
+              component="h1"
+              gutterBottom
+              className="gradient-text"
+              sx={{
+                fontSize: { xs: '1.6rem', md: '2.2rem' },
+                fontWeight: 800,
+              }}
             >
-              <Routes>
-                <Route
-                  element={<CameraView canSaveHistory={canSaveHistory} onSaved={() => navigate('/history')} />}
-                  path="/"
-                />
-                <Route element={<FabricGallery />} path="/history" />
-                <Route element={<Navigate replace to="/" />} path="*" />
-              </Routes>
-            </Suspense>
-          </Stack>
+              布地の色を分類・整理
+            </Typography>
+            <Typography
+              variant="body1"
+              sx={{
+                color: 'text.secondary',
+                maxWidth: 480,
+                mx: 'auto',
+                animation: 'fadeIn 0.6s ease-out 0.2s both',
+                lineHeight: 1.7,
+              }}
+            >
+              布地の写真を撮って、主要な色を自動で判別し、ギャラリーに整理します。
+              データはすべてお使いの端末に保存されます。
+            </Typography>
+          </Box>
+
+          {/* --- Two-Column Layout --- */}
+          <Grid container spacing={4} alignItems="flex-start">
+            <Grid item xs={12} md={5}>
+              <Paper
+                className="glass-panel animate-fade-in-up"
+                sx={{
+                  p: { xs: 2, sm: 3 },
+                  height: '100%',
+                  animationDelay: '0.1s',
+                }}
+              >
+                <section aria-labelledby="camera-heading">
+                  <h2 id="camera-heading" style={{ display: 'none' }}>撮影エリア</h2>
+                  <CameraView onAddFabric={handleAddFabric} isSaving={isSaving} />
+                </section>
+              </Paper>
+            </Grid>
+
+            <Grid item xs={12} md={7}>
+              <Paper
+                id="gallery-section"
+                className="glass-panel animate-fade-in-up"
+                sx={{
+                  p: { xs: 2, sm: 3 },
+                  height: '100%',
+                  animationDelay: '0.2s',
+                }}
+              >
+                <section aria-labelledby="gallery-heading">
+                  <h2 id="gallery-heading" style={{ display: 'none' }}>ギャラリーエリア</h2>
+                  <FabricGallery />
+                </section>
+              </Paper>
+            </Grid>
+          </Grid>
         </Container>
       </Box>
     </ThemeProvider>

@@ -1,250 +1,266 @@
-import { useCallback, useEffect, useId, useRef, useState, type ChangeEvent } from 'react';
-import {
-  Alert,
-  Box,
-  Button,
-  Paper,
-  Stack,
-  Typography,
-} from '@mui/material';
-import CameraAltOutlinedIcon from '@mui/icons-material/CameraAltOutlined';
-import ReplayOutlinedIcon from '@mui/icons-material/ReplayOutlined';
-import UploadFileOutlinedIcon from '@mui/icons-material/UploadFileOutlined';
-
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { Box, Button, Typography, Paper, CardMedia, Alert, Fade } from '@mui/material';
+import CameraAltIcon from '@mui/icons-material/CameraAlt';
+import ReplayIcon from '@mui/icons-material/Replay';
+import PhotoCameraIcon from '@mui/icons-material/PhotoCamera';
 import ColorAnalyzer from './ColorAnalyzer';
-import StepProgress from './StepProgress';
+import { ColorAnalysisResult } from '../utils/colorUtils';
+import ColorGroupTable from './ColorGroupTable';
 
 interface CameraViewProps {
-  canSaveHistory: boolean;
-  onSaved: () => void;
+  onAddFabric: (result: ColorAnalysisResult, imageDataUrl: string) => Promise<void>;
+  isSaving?: boolean; // 互換性のため残すが、内部ではColorAnalyzerの状態を使用
 }
 
-function CameraView({ canSaveHistory, onSaved }: CameraViewProps) {
+const CameraView: React.FC<CameraViewProps> = ({ onAddFabric, isSaving = false }) => {
+  const [stream, setStream] = useState<MediaStream | null>(null);
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [hasLiveCamera, setHasLiveCamera] = useState(false);
+  const [showFlash, setShowFlash] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const streamRef = useRef<MediaStream | null>(null);
-  const uploadInputId = useId();
 
   const stopCamera = useCallback(() => {
-    streamRef.current?.getTracks().forEach((track) => track.stop());
-    streamRef.current = null;
-    setHasLiveCamera(false);
-
-    if (videoRef.current) {
-      videoRef.current.srcObject = null;
+    if (stream) {
+      stream.getTracks().forEach((track) => track.stop());
+      setStream(null);
     }
-  }, []);
+  }, [stream]);
 
   const startCamera = useCallback(async () => {
     setCapturedImage(null);
     setError(null);
-    stopCamera();
-
-    if (!navigator.mediaDevices?.getUserMedia) {
-      setError('この端末ではカメラを使えません。写真を選ぶボタンを使ってください。');
-      return;
+    if (stream) {
+      stopCamera();
     }
-
     try {
       const mediaStream = await navigator.mediaDevices.getUserMedia({
-        audio: false,
-        video: {
-          facingMode: { ideal: 'environment' },
-          height: { ideal: 960 },
-          width: { ideal: 1280 },
-        },
+        video: { facingMode: 'environment' },
       });
-
-      streamRef.current = mediaStream;
-
+      setStream(mediaStream);
       if (videoRef.current) {
         videoRef.current.srcObject = mediaStream;
       }
-
-      setHasLiveCamera(true);
-    } catch (cameraError) {
-      console.warn('Unable to access the camera.', cameraError);
-      setError('カメラを使えません。設定を確認するか、写真を選ぶボタンを使ってください。');
+    } catch (err) {
+      console.error("Error accessing camera: ", err);
+      setError("カメラにアクセスできません。ブラウザの設定でカメラの使用を許可してください。");
     }
-  }, [stopCamera]);
+  }, [stream, stopCamera]);
 
   useEffect(() => {
-    void startCamera();
-
+    startCamera();
     return () => {
       stopCamera();
     };
-  }, [startCamera, stopCamera]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const captureImage = () => {
-    if (!videoRef.current || !canvasRef.current || videoRef.current.readyState < 2) {
-      return;
-    }
+    if (videoRef.current && canvasRef.current && videoRef.current.readyState >= 3) {
+      const video = videoRef.current;
+      const canvas = canvasRef.current;
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      const context = canvas.getContext('2d');
+      if (context) {
+        // フラッシュアニメーション
+        setShowFlash(true);
+        setTimeout(() => setShowFlash(false), 400);
 
-    const video = videoRef.current;
-    const canvas = canvasRef.current;
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    const context = canvas.getContext('2d');
-
-    if (!context) {
-      setError('写真の取得に失敗しました。もう一度お試しください。');
-      return;
-    }
-
-    context.drawImage(video, 0, 0, video.videoWidth, video.videoHeight);
-    const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
-    stopCamera();
-    setCapturedImage(dataUrl);
-  };
-
-  const handleFileSelected = (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-
-    if (!file) {
-      return;
-    }
-
-    stopCamera();
-    setError(null);
-
-    const reader = new FileReader();
-    reader.onload = () => {
-      const nextImage = typeof reader.result === 'string' ? reader.result : null;
-
-      if (!nextImage) {
-        setError('写真の読み込みに失敗しました。');
-        return;
+        context.drawImage(video, 0, 0, video.videoWidth, video.videoHeight);
+        const dataUrl = canvas.toDataURL('image/jpeg');
+        setCapturedImage(dataUrl);
+        stopCamera();
       }
-
-      setCapturedImage(nextImage);
-    };
-    reader.onerror = () => {
-      setError('写真の読み込みに失敗しました。');
-    };
-    reader.readAsDataURL(file);
-    event.target.value = '';
+    }
   };
+
+  // ステップ番号バッジ
+  const StepBadge: React.FC<{ step: number }> = ({ step }) => (
+    <Box
+      sx={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        width: 32,
+        height: 32,
+        borderRadius: '50%',
+        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+        color: '#fff',
+        fontWeight: 700,
+        fontSize: '0.85rem',
+        mr: 1.5,
+        flexShrink: 0,
+        boxShadow: '0 2px 12px rgba(102, 126, 234, 0.3)',
+      }}
+    >
+      {step}
+    </Box>
+  );
 
   return (
-    <Stack spacing={3}>
-      <StepProgress activeStep={capturedImage ? 1 : 0} />
-
+    <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3 }}>
       {!capturedImage ? (
-        <Paper sx={{ p: { xs: 2.5, md: 3.5 } }}>
-          <Stack spacing={2.5}>
-            <Box>
-              <Typography variant="h2">1. ぬのを撮る</Typography>
-              <Typography color="text.secondary" sx={{ mt: 1 }}>
-                布を 1 枚だけ大きくうつしてください。色が見えにくくても、このあと大きな文字と音で案内します。
+        <>
+          {/* ステップヘッダー */}
+          <Box sx={{ display: 'flex', alignItems: 'center', width: '100%' }}>
+            <StepBadge step={1} />
+            <Typography
+              variant="h5"
+              component="h2"
+              sx={{ fontWeight: 700 }}
+            >
+              布地を撮影する
+            </Typography>
+          </Box>
+
+          {/* カメラプレビュー */}
+          <Paper
+            elevation={0}
+            className="neon-border"
+            sx={{
+              width: '100%',
+              maxWidth: 500,
+              overflow: 'hidden',
+              p: 0,
+              background: 'rgba(20, 20, 35, 0.8)',
+              position: 'relative',
+            }}
+          >
+            {error && <Alert severity="error" sx={{ m: 2 }}>{error}</Alert>}
+
+            <Box sx={{
+              position: 'relative',
+              backgroundColor: '#000',
+              overflow: 'hidden',
+              borderRadius: '12px 12px 0 0',
+            }}>
+              <video
+                ref={videoRef}
+                autoPlay
+                playsInline
+                style={{ width: '100%', display: stream ? 'block' : 'none' }}
+                title="カメラプレビュー"
+              />
+
+              {/* カメラ起動中 */}
+              {!stream && !error && (
+                <Box sx={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  justifyContent: 'center',
+                  alignItems: 'center',
+                  height: 280,
+                  gap: 2,
+                }}>
+                  <PhotoCameraIcon sx={{
+                    fontSize: 48,
+                    color: 'text.secondary',
+                    animation: 'pulseSoft 2s ease-in-out infinite',
+                  }} />
+                  <Typography color="text.secondary">
+                    カメラを起動中...
+                  </Typography>
+                </Box>
+              )}
+
+              {/* フラッシュエフェクト */}
+              {showFlash && (
+                <Box sx={{
+                  position: 'absolute',
+                  inset: 0,
+                  backgroundColor: '#fff',
+                  animation: 'flashCapture 0.4s ease-out forwards',
+                  pointerEvents: 'none',
+                  zIndex: 10,
+                }} />
+              )}
+            </Box>
+
+            {/* 撮影ボタン */}
+            <Box sx={{ py: 2.5, textAlign: 'center', background: 'rgba(15, 15, 26, 0.5)' }}>
+              <Button
+                onClick={captureImage}
+                variant="contained"
+                size="large"
+                disabled={!stream}
+                startIcon={<CameraAltIcon />}
+                aria-label="布地を撮影する"
+                sx={{
+                  px: 4,
+                  py: 1.2,
+                  fontSize: '1rem',
+                  borderRadius: '50px',
+                }}
+              >
+                撮影
+              </Button>
+            </Box>
+          </Paper>
+
+          <ColorGroupTable />
+        </>
+      ) : (
+        <Fade in={true} timeout={500}>
+          <Box sx={{
+            width: '100%',
+            maxWidth: 500,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: 2,
+          }}>
+            {/* ステップヘッダー */}
+            <Box sx={{ display: 'flex', alignItems: 'center', width: '100%' }}>
+              <StepBadge step={2} />
+              <Typography
+                variant="h5"
+                component="h2"
+                sx={{ fontWeight: 700 }}
+              >
+                色を分析・保存する
               </Typography>
             </Box>
 
-            {error && (
-              <Alert severity="warning" sx={{ borderRadius: 3 }}>
-                {error}
-              </Alert>
-            )}
-
-            <Box
+            {/* 撮影画像 */}
+            <CardMedia
+              component="img"
+              image={capturedImage}
+              alt="撮影された布地"
               sx={{
-                background:
-                  'linear-gradient(160deg, rgba(21,111,91,0.14), rgba(242,166,90,0.12))',
-                border: '2px solid rgba(21,111,91,0.18)',
-                borderRadius: 4,
-                overflow: 'hidden',
-                p: { xs: 1, md: 1.5 },
+                borderRadius: 2,
+                width: '100%',
+                border: '1px solid rgba(255, 255, 255, 0.08)',
+              }}
+            />
+
+            <Button
+              onClick={startCamera}
+              variant="outlined"
+              startIcon={<ReplayIcon />}
+              aria-label="もう一度撮影する"
+              sx={{
+                borderColor: 'rgba(165, 180, 252, 0.3)',
+                color: '#a5b4fc',
+                '&:hover': {
+                  borderColor: 'rgba(165, 180, 252, 0.6)',
+                  background: 'rgba(165, 180, 252, 0.08)',
+                },
               }}
             >
-              <Box
-                sx={{
-                  alignItems: 'center',
-                  aspectRatio: '4 / 3',
-                  backgroundColor: '#e4ebee',
-                  borderRadius: 3,
-                  display: 'flex',
-                  justifyContent: 'center',
-                  overflow: 'hidden',
-                }}
-              >
-                <video
-                  autoPlay
-                  playsInline
-                  ref={videoRef}
-                  style={{
-                    display: hasLiveCamera ? 'block' : 'none',
-                    height: '100%',
-                    objectFit: 'cover',
-                    width: '100%',
-                  }}
-                  title="カメラプレビュー"
-                />
-                {!hasLiveCamera && (
-                  <Typography color="text.secondary" sx={{ fontSize: '1.1rem', fontWeight: 700 }}>
-                    カメラを準備しています
-                  </Typography>
-                )}
-              </Box>
-            </Box>
+              再撮影する
+            </Button>
 
-            <canvas aria-hidden="true" ref={canvasRef} style={{ display: 'none' }} />
-
-            <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5}>
-              <Button
-                disabled={!hasLiveCamera}
-                onClick={captureImage}
-                size="large"
-                startIcon={<CameraAltOutlinedIcon />}
-                variant="contained"
-              >
-                このまま撮る
-              </Button>
-              <Button
-                onClick={() => {
-                  void startCamera();
-                }}
-                size="large"
-                startIcon={<ReplayOutlinedIcon />}
-                variant="outlined"
-              >
-                カメラをやり直す
-              </Button>
-              <Button
-                component="label"
-                htmlFor={uploadInputId}
-                size="large"
-                startIcon={<UploadFileOutlinedIcon />}
-                variant="outlined"
-              >
-                写真を選ぶ
-              </Button>
-            </Stack>
-
-            <input
-              accept="image/*"
-              capture="environment"
-              hidden
-              id={uploadInputId}
-              onChange={handleFileSelected}
-              type="file"
+            <ColorAnalyzer
+              imageDataUrl={capturedImage}
+              onAddToGallery={onAddFabric}
+              isSaving={isSaving}
             />
-          </Stack>
-        </Paper>
-      ) : (
-        <ColorAnalyzer
-          canSaveHistory={canSaveHistory}
-          imageDataUrl={capturedImage}
-          onRetake={() => {
-            void startCamera();
-          }}
-          onSaved={onSaved}
-        />
+          </Box>
+        </Fade>
       )}
-    </Stack>
+    </Box>
   );
-}
+};
 
 export default CameraView;
