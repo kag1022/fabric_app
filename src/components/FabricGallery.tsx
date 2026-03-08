@@ -9,8 +9,10 @@ import {
   DialogContent,
   DialogContentText,
   DialogTitle,
+  FormControlLabel,
   Paper,
   Stack,
+  Switch,
   Typography,
 } from '@mui/material';
 import DeleteSweepOutlinedIcon from '@mui/icons-material/DeleteSweepOutlined';
@@ -107,7 +109,12 @@ type FeedbackState = {
   severity: 'error' | 'info' | 'success';
 } | null;
 
-function FabricGallery() {
+interface FabricGalleryProps {
+  autoReadEnabled: boolean;
+  onAutoReadEnabledChange: (autoReadEnabled: boolean) => void;
+}
+
+function FabricGallery({ autoReadEnabled, onAutoReadEnabledChange }: FabricGalleryProps) {
   const canSaveHistory = isLocalHistorySupported();
   const [items, setItems] = useState<LocalFabricRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -279,15 +286,36 @@ function FabricGallery() {
       <Paper component="section" sx={{ p: { xs: 2.5, md: 3.5 } }}>
         <Stack spacing={0.5}>
           <Typography component="h2" variant="h2">
-            記録
+            職員向け 記録管理
           </Typography>
           <Typography color="text.secondary" sx={{ fontSize: '1rem' }}>
-            保存した色を見られます。
+            本人向け画面とは分けて、記録と端末設定を管理します。
           </Typography>
         </Stack>
       </Paper>
 
       {feedback && <Alert severity={feedback.severity}>{feedback.message}</Alert>}
+
+      <Paper component="section" sx={{ p: { xs: 2.5, md: 3 } }}>
+        <Stack spacing={1.5}>
+          <Typography variant="h3">音声設定</Typography>
+          <FormControlLabel
+            control={
+              <Switch
+                checked={autoReadEnabled}
+                onChange={(_event, checked) => {
+                  onAutoReadEnabledChange(checked);
+                }}
+              />
+            }
+            label="結果を自動で読む"
+            sx={{ alignItems: 'center', m: 0 }}
+          />
+          <Typography color="text.secondary">
+            本人向け画面で結果を開いたとき、自動で読み上げるかどうかを端末ごとに決められます。
+          </Typography>
+        </Stack>
+      </Paper>
 
       {!canSaveHistory && (
         <Paper sx={{ p: 4 }}>
@@ -300,34 +328,30 @@ function FabricGallery() {
 
       {canSaveHistory && (
         <Paper component="section" sx={{ p: { xs: 2.5, md: 3 } }}>
-          <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5}>
-            <Button
-              disabled={items.length === 0}
-              fullWidth
-              onClick={handleExport}
-              startIcon={<DownloadOutlinedIcon />}
-              variant="contained"
-            >
-              記録を書き出す
-            </Button>
-            <Button
-              fullWidth
-              onClick={() => importInputRef.current?.click()}
-              startIcon={<UploadFileOutlinedIcon />}
-              variant="outlined"
-            >
-              記録を読みこむ
-            </Button>
-            <Button
-              color="error"
-              disabled={items.length === 0}
-              fullWidth
-              onClick={() => setIsClearDialogOpen(true)}
-              startIcon={<DeleteSweepOutlinedIcon />}
-              variant="outlined"
-            >
-              すべて消す
-            </Button>
+          <Stack spacing={1.5}>
+            <Typography variant="h3">記録の移動</Typography>
+            <Typography color="text.secondary">
+              記録の書き出しと読み込みを行います。日常の確認よりも、引き継ぎや端末交換のときに使います。
+            </Typography>
+            <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5}>
+              <Button
+                disabled={items.length === 0}
+                fullWidth
+                onClick={handleExport}
+                startIcon={<DownloadOutlinedIcon />}
+                variant="contained"
+              >
+                記録を書き出す
+              </Button>
+              <Button
+                fullWidth
+                onClick={() => importInputRef.current?.click()}
+                startIcon={<UploadFileOutlinedIcon />}
+                variant="outlined"
+              >
+                記録を読みこむ
+              </Button>
+            </Stack>
           </Stack>
           <input
             accept="application/json,.json"
@@ -340,11 +364,32 @@ function FabricGallery() {
         </Paper>
       )}
 
+      {canSaveHistory && (
+        <Paper component="section" sx={{ p: { xs: 2.5, md: 3 } }}>
+          <Stack spacing={1.5}>
+            <Typography variant="h3">危険な操作</Typography>
+            <Typography color="text.secondary">
+              すべて消す操作は元に戻せません。必要なときだけ使ってください。
+            </Typography>
+            <Button
+              color="error"
+              disabled={items.length === 0}
+              fullWidth
+              onClick={() => setIsClearDialogOpen(true)}
+              startIcon={<DeleteSweepOutlinedIcon />}
+              variant="outlined"
+            >
+              すべて消す
+            </Button>
+          </Stack>
+        </Paper>
+      )}
+
       {canSaveHistory && items.length === 0 ? (
         <Paper sx={{ p: 4 }}>
           <Typography variant="h3">まだありません</Typography>
           <Typography color="text.secondary" sx={{ mt: 1.5 }}>
-            結果画面で「保存して次へ」を押すと、ここに出ます。
+            本人向け画面で「保存して次へ」を押すと、ここに出ます。
           </Typography>
         </Paper>
       ) : canSaveHistory ? (

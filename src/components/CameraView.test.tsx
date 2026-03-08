@@ -1,5 +1,5 @@
 import { fireEvent, render, screen } from '@testing-library/react';
-import { beforeAll, beforeEach, expect, test, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, expect, test, vi } from 'vitest';
 
 import CameraView from './CameraView';
 
@@ -46,13 +46,60 @@ beforeEach(() => {
   });
 });
 
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
+test('does not request camera access until the user chooses it', async () => {
+  const getUserMedia = vi.fn(
+    () =>
+      new Promise<MediaStream>(() => {
+        // Keep the request pending so the test only verifies the trigger timing.
+      }),
+  );
+
+  Object.defineProperty(global.navigator, 'mediaDevices', {
+    value: {
+      getUserMedia,
+    },
+    writable: true,
+  });
+
+  render(<CameraView autoReadEnabled canSaveHistory />);
+
+  expect(screen.getByRole('button', { name: 'カメラを使う' })).toBeInTheDocument();
+  expect(getUserMedia).not.toHaveBeenCalled();
+
+  fireEvent.click(screen.getByRole('button', { name: 'カメラを使う' }));
+
+  expect(getUserMedia).toHaveBeenCalledTimes(1);
+});
+
+test('shows photo selection as the primary fallback when camera access fails', async () => {
+  vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+  Object.defineProperty(global.navigator, 'mediaDevices', {
+    value: {
+      getUserMedia: vi.fn().mockRejectedValue(new Error('denied')),
+    },
+    writable: true,
+  });
+
+  render(<CameraView autoReadEnabled canSaveHistory />);
+
+  fireEvent.click(screen.getByRole('button', { name: 'カメラを使う' }));
+
+  expect(await screen.findByText('カメラを使えません。必要なときは写真をえらんでください。')).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: '写真をとる' })).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: '写真をえらぶ' })).toBeInTheDocument();
+});
+
 test('returns to the camera screen after saving', async () => {
-  const { container } = render(<CameraView canSaveHistory />);
+  const { container } = render(<CameraView autoReadEnabled canSaveHistory />);
 
   const fileInput = container.querySelector('input[type="file"]');
 
   expect(fileInput).not.toBeNull();
-  expect(await screen.findByText('写真をとる')).toBeInTheDocument();
+  expect(await screen.findByText('カメラを使う')).toBeInTheDocument();
 
   fireEvent.change(fileInput as HTMLInputElement, {
     target: {
@@ -64,7 +111,7 @@ test('returns to the camera screen after saving', async () => {
 
   fireEvent.click(screen.getByRole('button', { name: '保存して次へ' }));
 
-  expect(await screen.findByText('保存しました。次のぬのを撮れます。')).toBeInTheDocument();
-  expect(await screen.findByText('写真をとる')).toBeInTheDocument();
+  expect(await screen.findByText('保存しました。次のぬのを見られます。')).toBeInTheDocument();
+  expect(await screen.findByText('カメラを使う')).toBeInTheDocument();
   expect(screen.queryByText('結果確認')).not.toBeInTheDocument();
 });

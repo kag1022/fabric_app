@@ -1,13 +1,20 @@
 
 import { kmeans } from 'ml-kmeans';
 
+export interface DominantColorCluster {
+  r: number;
+  g: number;
+  b: number;
+  size: number;
+}
+
 /**
  * 画像データからk-meansクラスタリングを使用してドミナントカラーを抽出する
  * @param data - ImageData.data (Uint8ClampedArray)
  * @param k - クラスタ数 (抽出するドミナントカラーの数)
  * @returns ドミナントカラーのRGB値の配列
  */
-export function getDominantColors(data: Uint8ClampedArray, k: number): { r: number; g: number; b: number }[] {
+export function getDominantColors(data: Uint8ClampedArray, k: number): DominantColorCluster[] {
   const pixels: number[][] = [];
   
   // 処理負荷を軽減するため、一定間隔でピクセルをサンプリングする

@@ -1,4 +1,4 @@
-import { Suspense, lazy } from 'react';
+import { Suspense, lazy, useState } from 'react';
 import { Link as RouterLink, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import {
   Box,
@@ -10,10 +10,10 @@ import {
   Typography,
 } from '@mui/material';
 import { ThemeProvider, createTheme, responsiveFontSizes } from '@mui/material/styles';
-import HistoryOutlinedIcon from '@mui/icons-material/HistoryOutlined';
-import VisibilityOutlinedIcon from '@mui/icons-material/VisibilityOutlined';
+import ArrowBackOutlinedIcon from '@mui/icons-material/ArrowBackOutlined';
 
 import CameraView from './components/CameraView';
+import { loadDeviceSettings, saveDeviceSettings } from './services/deviceSettings';
 import { isLocalHistorySupported } from './services/localHistory';
 
 const FabricGallery = lazy(() => import('./components/FabricGallery'));
@@ -108,7 +108,15 @@ appTheme = responsiveFontSizes(appTheme);
 
 function App() {
   const location = useLocation();
-  const isHistoryPage = location.pathname === '/history';
+  const isStaffHistoryPage = location.pathname === '/staff/history' || location.pathname === '/history';
+  const [deviceSettings, setDeviceSettings] = useState(loadDeviceSettings);
+  const canSaveHistory = isLocalHistorySupported();
+
+  const handleAutoReadEnabledChange = (autoReadEnabled: boolean) => {
+    const nextSettings = { autoReadEnabled };
+    setDeviceSettings(nextSettings);
+    saveDeviceSettings(nextSettings);
+  };
 
   return (
     <ThemeProvider theme={appTheme}>
@@ -155,16 +163,18 @@ function App() {
                 ぬの 色よみ サポート
               </Typography>
 
-              <Button
-                color={isHistoryPage ? 'secondary' : 'primary'}
-                component={RouterLink}
-                startIcon={isHistoryPage ? <VisibilityOutlinedIcon /> : <HistoryOutlinedIcon />}
-                sx={{ minHeight: 48, minWidth: 'auto', px: 1.75 }}
-                to={isHistoryPage ? '/' : '/history'}
-                variant="text"
-              >
-                {isHistoryPage ? 'もどる' : '記録'}
-              </Button>
+              {isStaffHistoryPage ? (
+                <Button
+                  color="secondary"
+                  component={RouterLink}
+                  startIcon={<ArrowBackOutlinedIcon />}
+                  sx={{ minHeight: 48, minWidth: 'auto', px: 1.75 }}
+                  to="/"
+                  variant="text"
+                >
+                  もどる
+                </Button>
+              ) : null}
             </Stack>
 
             <Box component="main" id="main-content">
@@ -190,8 +200,25 @@ function App() {
                 }
               >
                 <Routes>
-                  <Route element={<CameraView canSaveHistory={isLocalHistorySupported()} />} path="/" />
-                  <Route element={<FabricGallery />} path="/history" />
+                  <Route
+                    element={
+                      <CameraView
+                        autoReadEnabled={deviceSettings.autoReadEnabled}
+                        canSaveHistory={canSaveHistory}
+                      />
+                    }
+                    path="/"
+                  />
+                  <Route
+                    element={
+                      <FabricGallery
+                        autoReadEnabled={deviceSettings.autoReadEnabled}
+                        onAutoReadEnabledChange={handleAutoReadEnabledChange}
+                      />
+                    }
+                    path="/staff/history"
+                  />
+                  <Route element={<Navigate replace to="/staff/history" />} path="/history" />
                   <Route element={<Navigate replace to="/" />} path="*" />
                 </Routes>
               </Suspense>
