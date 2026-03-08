@@ -7,14 +7,19 @@ import UploadFileOutlinedIcon from '@mui/icons-material/UploadFileOutlined';
 import ColorAnalyzer from './ColorAnalyzer';
 
 interface CameraViewProps {
+  autoReadEnabled: boolean;
   canSaveHistory: boolean;
 }
 
-function CameraView({ canSaveHistory }: CameraViewProps) {
+type CameraState = 'idle' | 'starting' | 'live' | 'error' | 'unsupported';
+type CaptureSource = 'camera' | 'file' | null;
+
+function CameraView({ autoReadEnabled, canSaveHistory }: CameraViewProps) {
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
+  const [cameraState, setCameraState] = useState<CameraState>('idle');
+  const [captureSource, setCaptureSource] = useState<CaptureSource>(null);
   const [error, setError] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
-  const [hasLiveCamera, setHasLiveCamera] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -23,7 +28,6 @@ function CameraView({ canSaveHistory }: CameraViewProps) {
   const stopCamera = useCallback(() => {
     streamRef.current?.getTracks().forEach((track) => track.stop());
     streamRef.current = null;
-    setHasLiveCamera(false);
 
     if (videoRef.current) {
       videoRef.current.srcObject = null;
@@ -38,9 +42,11 @@ function CameraView({ canSaveHistory }: CameraViewProps) {
     setCapturedImage(null);
     setError(null);
     stopCamera();
+    setCameraState('starting');
 
     if (!navigator.mediaDevices?.getUserMedia) {
-      setError('この端末ではカメラを使えません。下の「写真をえらぶ」を押してください。');
+      setError('この端末ではカメラを使えません。写真をえらんで進めてください。');
+      setCameraState('unsupported');
       return;
     }
 
@@ -55,25 +61,25 @@ function CameraView({ canSaveHistory }: CameraViewProps) {
       });
 
       streamRef.current = mediaStream;
+      setCaptureSource('camera');
 
       if (videoRef.current) {
         videoRef.current.srcObject = mediaStream;
       }
 
-      setHasLiveCamera(true);
+      setCameraState('live');
     } catch (cameraError) {
       console.warn('Unable to access the camera.', cameraError);
-      setError('カメラを使えません。「写真をえらぶ」を押すか、設定を確認してください。');
+      setError('カメラを使えません。必要なときは写真をえらんでください。');
+      setCameraState('error');
     }
   }, [stopCamera]);
 
   useEffect(() => {
-    void startCamera();
-
     return () => {
       stopCamera();
     };
-  }, [startCamera, stopCamera]);
+  }, [stopCamera]);
 
   const captureImage = () => {
     if (!videoRef.current || !canvasRef.current || videoRef.current.readyState < 2) {
@@ -96,6 +102,7 @@ function CameraView({ canSaveHistory }: CameraViewProps) {
     context.drawImage(video, 0, 0, video.videoWidth, video.videoHeight);
     const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
     stopCamera();
+    setCameraState('idle');
     setCapturedImage(dataUrl);
   };
 
@@ -109,6 +116,8 @@ function CameraView({ canSaveHistory }: CameraViewProps) {
     stopCamera();
     setError(null);
     setFeedback(null);
+    setCaptureSource('file');
+    setCameraState('idle');
 
     const reader = new FileReader();
     reader.onload = () => {
@@ -131,17 +140,48 @@ function CameraView({ canSaveHistory }: CameraViewProps) {
   if (capturedImage) {
     return (
       <ColorAnalyzer
+        autoReadEnabled={autoReadEnabled}
         canSaveHistory={canSaveHistory}
         imageDataUrl={capturedImage}
         onRetake={() => {
-          void startCamera(true);
+          setCapturedImage(null);
+          setError(null);
+          if (captureSource === 'camera') {
+            void startCamera(true);
+            return;
+          }
+          setCameraState('idle');
         }}
         onSaved={() => {
-          setFeedback('保存しました。次のぬのを撮れます。');
-          void startCamera();
+          setFeedback('保存しました。次のぬのを見られます。');
+          setCapturedImage(null);
+          setError(null);
+          if (captureSource === 'camera') {
+            void startCamera();
+            return;
+          }
+          setCameraState('idle');
         }}
       />
     );
+  }
+
+  const isCameraLive = cameraState === 'live';
+  const isCameraStarting = cameraState === 'starting';
+  const showChoosePhotoAsPrimary = cameraState === 'error' || cameraState === 'unsupported';
+
+  let panelTitle = '使い方をえらんでください';
+  let panelDescription = '下の大きいボタンから始められます。';
+
+  if (isCameraStarting) {
+    panelTitle = 'カメラを準備しています';
+    panelDescription = '少し待つと、写真をとれるようになります。';
+  } else if (showChoosePhotoAsPrimary) {
+    panelTitle = '写真をえらんで進めます';
+    panelDescription = '下のボタンから写真をえらぶと、そのまま色を見られます。';
+  } else if (isCameraLive) {
+    panelTitle = '';
+    panelDescription = '';
   }
 
   return (
@@ -179,7 +219,7 @@ function CameraView({ canSaveHistory }: CameraViewProps) {
                 playsInline
                 ref={videoRef}
                 style={{
-                  display: hasLiveCamera ? 'block' : 'none',
+                  display: isCameraLive ? 'block' : 'none',
                   height: '100%',
                   objectFit: 'cover',
                   width: '100%',
@@ -187,13 +227,13 @@ function CameraView({ canSaveHistory }: CameraViewProps) {
                 title="カメラプレビュー"
               />
 
-              {!hasLiveCamera && (
+              {!isCameraLive && (
                 <Stack alignItems="center" spacing={1.5} sx={{ p: 3, textAlign: 'center' }}>
-                  <Typography variant="h3">{error ? '写真をえらべます' : 'カメラを準備しています'}</Typography>
+                  <Typography component="h2" variant="h3">
+                    {panelTitle}
+                  </Typography>
                   <Typography color="text.secondary" sx={{ maxWidth: 320 }}>
-                    {error
-                      ? '下の「写真をえらぶ」を押すと、そのまま色を見られます。'
-                      : '準備が終わるまで、そのまま少し待ってください。'}
+                    {panelDescription}
                   </Typography>
                 </Stack>
               )}
@@ -215,40 +255,79 @@ function CameraView({ canSaveHistory }: CameraViewProps) {
         }}
       >
         <Stack spacing={1.5}>
-          <Button
-            disabled={!hasLiveCamera}
-            fullWidth
-            onClick={captureImage}
-            size="large"
-            startIcon={<CameraAltOutlinedIcon />}
-            variant="contained"
-          >
-            写真をとる
-          </Button>
-
-          <Button
-            fullWidth
-            onClick={() => uploadInputRef.current?.click()}
-            size="large"
-            startIcon={<UploadFileOutlinedIcon />}
-            variant="outlined"
-          >
-            写真をえらぶ
-          </Button>
-
-          {error && (
-            <Button
-              fullWidth
-              onClick={() => {
-                void startCamera(true);
-              }}
-              size="large"
-              startIcon={<ReplayOutlinedIcon />}
-              variant="text"
-            >
-              カメラをやり直す
-            </Button>
+          {isCameraLive ? (
+            <>
+              <Button
+                fullWidth
+                onClick={captureImage}
+                size="large"
+                startIcon={<CameraAltOutlinedIcon />}
+                variant="contained"
+              >
+                写真をとる
+              </Button>
+              <Button
+                fullWidth
+                onClick={() => uploadInputRef.current?.click()}
+                size="large"
+                startIcon={<UploadFileOutlinedIcon />}
+                variant="outlined"
+              >
+                写真をえらぶ
+              </Button>
+            </>
+          ) : (
+            <>
+              {showChoosePhotoAsPrimary ? (
+                <Button
+                  fullWidth
+                  onClick={() => uploadInputRef.current?.click()}
+                  size="large"
+                  startIcon={<UploadFileOutlinedIcon />}
+                  variant="contained"
+                >
+                  写真をえらぶ
+                </Button>
+              ) : (
+                <Button
+                  disabled={isCameraStarting}
+                  fullWidth
+                  onClick={() => {
+                    void startCamera(true);
+                  }}
+                  size="large"
+                  startIcon={<CameraAltOutlinedIcon />}
+                  variant="contained"
+                >
+                  {isCameraStarting ? 'カメラを準備しています' : 'カメラを使う'}
+                </Button>
+              )}
+              {showChoosePhotoAsPrimary ? (
+                <Button
+                  fullWidth
+                  onClick={() => {
+                    void startCamera(true);
+                  }}
+                  size="large"
+                  startIcon={<ReplayOutlinedIcon />}
+                  variant="outlined"
+                >
+                  もう一度 カメラを使う
+                </Button>
+              ) : (
+                <Button
+                  fullWidth
+                  onClick={() => uploadInputRef.current?.click()}
+                  size="large"
+                  startIcon={<UploadFileOutlinedIcon />}
+                  variant="outlined"
+                >
+                  写真をえらぶ
+                </Button>
+              )}
+            </>
           )}
+
         </Stack>
 
         <input

@@ -18,24 +18,35 @@ import {
 } from '../utils/colorUtils';
 
 interface ColorAnalyzerProps {
+  autoReadEnabled: boolean;
   canSaveHistory: boolean;
   imageDataUrl: string;
   onRetake: () => void;
   onSaved: () => void;
 }
 
-function ColorAnalyzer({ canSaveHistory, imageDataUrl, onRetake, onSaved }: ColorAnalyzerProps) {
-  const [analysisResults, setAnalysisResults] = useState<ColorAnalysisResult[]>([]);
+type AnalyzedColorResult = ColorAnalysisResult & {
+  clusterSize: number;
+};
+
+function ColorAnalyzer({
+  autoReadEnabled,
+  canSaveHistory,
+  imageDataUrl,
+  onRetake,
+  onSaved,
+}: ColorAnalyzerProps) {
+  const [analysisResults, setAnalysisResults] = useState<AnalyzedColorResult[]>([]);
   const [isAnalyzing, setIsAnalyzing] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
-  const [audioEnabled, setAudioEnabled] = useState(true);
+  const [audioEnabled, setAudioEnabled] = useState(autoReadEnabled);
   const [error, setError] = useState<string | null>(null);
   const imageRef = useRef<HTMLImageElement>(null);
   const resultCardRef = useRef<HTMLDivElement>(null);
 
-  const announceResult = useEffectEvent((message: string) => {
+  const announceResult = useEffectEvent((message: string, force = false) => {
     if (
-      !audioEnabled ||
+      (!audioEnabled && !force) ||
       typeof window === 'undefined' ||
       typeof window.speechSynthesis === 'undefined'
     ) {
@@ -57,7 +68,8 @@ function ColorAnalyzer({ canSaveHistory, imageDataUrl, onRetake, onSaved }: Colo
     setError(null);
     setIsAnalyzing(true);
     setIsSaving(false);
-  }, [imageDataUrl]);
+    setAudioEnabled(autoReadEnabled);
+  }, [autoReadEnabled, imageDataUrl]);
 
   useEffect(() => {
     return () => {
@@ -108,6 +120,7 @@ function ColorAnalyzer({ canSaveHistory, imageDataUrl, onRetake, onSaved }: Colo
         const valueInfo = classifyValue(hsv.s, hsv.v);
 
         return {
+          clusterSize: color.size,
           dominantRgb: color,
           hsv,
           hueInfo,
@@ -127,7 +140,17 @@ function ColorAnalyzer({ canSaveHistory, imageDataUrl, onRetake, onSaved }: Colo
   };
 
   const mainResult = analysisResults[0] ?? null;
-  const guidance = mainResult ? buildColorGuidance(mainResult) : null;
+  const secondaryResult = analysisResults[1] ?? null;
+  const secondaryWeightRatio =
+    mainResult && secondaryResult && mainResult.clusterSize > 0
+      ? secondaryResult.clusterSize / mainResult.clusterSize
+      : undefined;
+  const guidance = mainResult
+    ? buildColorGuidance(mainResult, {
+        secondaryResult: secondaryResult ?? undefined,
+        secondaryWeightRatio,
+      })
+    : null;
 
   useEffect(() => {
     if (guidance?.speechText) {
@@ -143,7 +166,7 @@ function ColorAnalyzer({ canSaveHistory, imageDataUrl, onRetake, onSaved }: Colo
 
   const handleReplaySpeech = () => {
     if (guidance) {
-      announceResult(guidance.speechText);
+      announceResult(guidance.speechText, true);
     }
   };
 
@@ -178,7 +201,7 @@ function ColorAnalyzer({ canSaveHistory, imageDataUrl, onRetake, onSaved }: Colo
   return (
     <Stack spacing={3}>
       <Paper component="section" aria-label="結果の確認" sx={{ p: { xs: 2, md: 2.5 } }}>
-        <Stack spacing={2}>
+        <Stack spacing={2.5}>
           <img
             alt="分析する布の写真"
             onError={() => {
@@ -197,164 +220,156 @@ function ColorAnalyzer({ canSaveHistory, imageDataUrl, onRetake, onSaved }: Colo
             <Alert severity="info">このブラウザでは保存できません。色を読むことはできます。</Alert>
           )}
 
-          <Box
-            sx={{
-              display: 'grid',
-              gap: 2,
-              gridTemplateColumns: {
-                xs: '1fr',
-                md: 'minmax(280px, 0.92fr) minmax(0, 1.08fr)',
-              },
-            }}
-          >
-            {isAnalyzing ? (
-              <Paper
-                aria-live="polite"
-                role="status"
-                sx={{
-                  alignItems: 'center',
-                  display: 'flex',
-                  justifyContent: 'center',
-                  minHeight: 320,
-                  order: { xs: 1, md: 2 },
-                  p: 4,
-                }}
-              >
-                <Stack alignItems="center" spacing={2}>
-                  <CircularProgress aria-hidden="true" size={56} />
-                  <Typography variant="h3">色を読んでいます</Typography>
-                  <Typography color="text.secondary">少し待つと結果が出ます。</Typography>
-                </Stack>
-              </Paper>
-            ) : (
-              guidance && (
-                <Paper
-                  aria-live="polite"
-                  ref={resultCardRef}
-                  role="status"
-                  sx={{
-                    background: 'linear-gradient(180deg, #005A46 0%, #00382C 100%)',
-                    color: '#FFFFFF',
-                    minHeight: 320,
-                    order: { xs: 1, md: 2 },
-                    p: { xs: 2.5, md: 3.5 },
-                  }}
-                  tabIndex={-1}
-                >
-                  <Stack spacing={2.5}>
-                    <Box>
-                      <Typography sx={{ fontSize: '1rem', fontWeight: 800, opacity: 0.9 }}>色</Typography>
-                      <Typography
-                        component="p"
-                        sx={{
-                          fontSize: 'clamp(3.2rem, 10vw, 5.3rem)',
-                          fontWeight: 900,
-                          letterSpacing: '0.02em',
-                          lineHeight: 1.05,
-                          mt: 1,
-                        }}
-                      >
-                        {guidance.headline}
-                      </Typography>
-                      <Typography
-                        component="p"
-                        sx={{ fontSize: 'clamp(1.4rem, 3vw, 1.9rem)', fontWeight: 800, mt: 1 }}
-                      >
-                        色は {guidance.headline} です
-                      </Typography>
-                    </Box>
-
-                    <Paper
-                      sx={{
-                        backgroundColor: 'rgba(255, 255, 255, 0.12)',
-                        border: '1px solid rgba(255, 255, 255, 0.18)',
-                        boxShadow: 'none',
-                        color: '#FFFFFF',
-                        p: 2,
-                      }}
-                    >
-                      <Typography sx={{ fontSize: '1.2rem', fontWeight: 700 }}>
-                        {guidance.detailLine}
-                      </Typography>
-                    </Paper>
-
-                    <Stack
-                      direction="row"
-                      spacing={1.5}
-                      sx={{ alignItems: 'center', justifyContent: 'space-between' }}
-                    >
-                      <Typography sx={{ fontSize: '1rem', fontWeight: 700 }}>
-                        文字と音で確かめてください
-                      </Typography>
-                      <Box
-                        aria-hidden="true"
-                        sx={{
-                          backgroundColor: `rgb(${mainResult.dominantRgb.r}, ${mainResult.dominantRgb.g}, ${mainResult.dominantRgb.b})`,
-                          border: '2px solid rgba(255, 255, 255, 0.4)',
-                          borderRadius: 3,
-                          height: 56,
-                          minWidth: 56,
-                        }}
-                      />
-                    </Stack>
-
-                    <Box component="dl" sx={{ display: 'grid', gap: 1.25, m: 0 }}>
-                      <Box
-                        sx={{
-                          alignItems: 'center',
-                          display: 'flex',
-                          justifyContent: 'space-between',
-                          gap: 2,
-                        }}
-                      >
-                        <Typography component="dt" sx={{ fontSize: '1.05rem', fontWeight: 700, m: 0 }}>
-                          明るさ
-                        </Typography>
-                        <Typography component="dd" sx={{ fontSize: '1.25rem', fontWeight: 900, m: 0 }}>
-                          {mainResult?.valueInfo.name}
-                        </Typography>
-                      </Box>
-                      <Box
-                        sx={{
-                          alignItems: 'center',
-                          display: 'flex',
-                          justifyContent: 'space-between',
-                          gap: 2,
-                        }}
-                      >
-                        <Typography component="dt" sx={{ fontSize: '1.05rem', fontWeight: 700, m: 0 }}>
-                          色のつよさ
-                        </Typography>
-                        <Typography component="dd" sx={{ fontSize: '1.25rem', fontWeight: 900, m: 0 }}>
-                          {mainResult?.saturationInfo.name}
-                        </Typography>
-                      </Box>
-                    </Box>
-                  </Stack>
-                </Paper>
-              )
-            )}
-
+          {isAnalyzing ? (
             <Paper
+              aria-live="polite"
+              role="status"
               sx={{
-                order: { xs: 2, md: 1 },
-                overflow: 'hidden',
-                p: { xs: 1.5, md: 2 },
+                alignItems: 'center',
+                display: 'flex',
+                justifyContent: 'center',
+                minHeight: 320,
+                p: 4,
               }}
             >
-              <Box
-                component="img"
-                src={imageDataUrl}
-                alt="撮影した布"
-                sx={{
-                  aspectRatio: '4 / 3',
-                  borderRadius: 3,
-                  objectFit: 'cover',
-                  width: '100%',
-                }}
-              />
+              <Stack alignItems="center" spacing={2}>
+                <CircularProgress aria-hidden="true" size={56} />
+                <Typography variant="h3">色を読んでいます</Typography>
+                <Typography color="text.secondary">少し待つと結果が出ます。</Typography>
+              </Stack>
             </Paper>
-          </Box>
+          ) : (
+            guidance && (
+              <Paper
+                aria-live="polite"
+                ref={resultCardRef}
+                role="status"
+                sx={{
+                  background: 'linear-gradient(180deg, #005A46 0%, #00382C 100%)',
+                  color: '#FFFFFF',
+                  minHeight: 320,
+                  p: { xs: 2.5, md: 3.5 },
+                }}
+                tabIndex={-1}
+              >
+                <Stack spacing={2.5}>
+                  <Box>
+                    <Typography sx={{ fontSize: '1rem', fontWeight: 800, opacity: 0.9 }}>色</Typography>
+                    <Typography
+                      component="p"
+                      sx={{
+                        fontSize: 'clamp(3.2rem, 10vw, 5.3rem)',
+                        fontWeight: 900,
+                        letterSpacing: '0.02em',
+                        lineHeight: 1.05,
+                        mt: 1,
+                      }}
+                    >
+                      {guidance.headline}
+                    </Typography>
+                    <Typography
+                      component="p"
+                      sx={{ fontSize: 'clamp(1.4rem, 3vw, 1.9rem)', fontWeight: 800, mt: 1 }}
+                    >
+                      {guidance.isAmbiguous && guidance.secondaryHeadline
+                        ? `色は ${guidance.headline} か ${guidance.secondaryHeadline} です`
+                        : `色は ${guidance.headline} です`}
+                    </Typography>
+                    {guidance.isAmbiguous && guidance.secondaryHeadline ? (
+                      <Typography
+                        component="p"
+                        sx={{ fontSize: '1.1rem', fontWeight: 700, mt: 1.5, opacity: 0.92 }}
+                      >
+                        候補: {guidance.headline} / {guidance.secondaryHeadline}
+                      </Typography>
+                    ) : null}
+                  </Box>
+
+                  <Paper
+                    sx={{
+                      backgroundColor: 'rgba(255, 255, 255, 0.12)',
+                      border: '1px solid rgba(255, 255, 255, 0.18)',
+                      boxShadow: 'none',
+                      color: '#FFFFFF',
+                      p: 2,
+                    }}
+                  >
+                    <Typography sx={{ fontSize: '1.2rem', fontWeight: 700 }}>
+                      {guidance.detailLine}
+                    </Typography>
+                  </Paper>
+
+                  <Stack
+                    direction={{ xs: 'column', md: 'row' }}
+                    spacing={1.5}
+                    sx={{ alignItems: { md: 'center' }, justifyContent: 'space-between' }}
+                  >
+                    <Typography sx={{ fontSize: '1rem', fontWeight: 700 }}>
+                      文字と音で確かめてください
+                    </Typography>
+                    <Box
+                      aria-hidden="true"
+                      sx={{
+                        backgroundColor: `rgb(${mainResult.dominantRgb.r}, ${mainResult.dominantRgb.g}, ${mainResult.dominantRgb.b})`,
+                        border: '2px solid rgba(255, 255, 255, 0.4)',
+                        borderRadius: 3,
+                        height: 44,
+                        minWidth: 44,
+                      }}
+                    />
+                  </Stack>
+
+                  <Box component="dl" sx={{ display: 'grid', gap: 1.25, m: 0 }}>
+                    <Box
+                      sx={{
+                        alignItems: 'center',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        gap: 2,
+                      }}
+                    >
+                      <Typography component="dt" sx={{ fontSize: '1.05rem', fontWeight: 700, m: 0 }}>
+                        明るさ
+                      </Typography>
+                      <Typography component="dd" sx={{ fontSize: '1.25rem', fontWeight: 900, m: 0 }}>
+                        {mainResult.valueInfo.name}
+                      </Typography>
+                    </Box>
+                    <Box
+                      sx={{
+                        alignItems: 'center',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        gap: 2,
+                      }}
+                    >
+                      <Typography component="dt" sx={{ fontSize: '1.05rem', fontWeight: 700, m: 0 }}>
+                        色のつよさ
+                      </Typography>
+                      <Typography component="dd" sx={{ fontSize: '1.25rem', fontWeight: 900, m: 0 }}>
+                        {mainResult.saturationInfo.name}
+                      </Typography>
+                    </Box>
+                  </Box>
+
+                  <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5}>
+                    <Button
+                      disabled={!guidance}
+                      fullWidth
+                      onClick={handleReplaySpeech}
+                      startIcon={<CampaignOutlinedIcon />}
+                      variant="outlined"
+                    >
+                      もう一度読む
+                    </Button>
+                    <Button fullWidth onClick={onRetake} startIcon={<ReplayOutlinedIcon />} variant="outlined">
+                      撮り直す
+                    </Button>
+                  </Stack>
+                </Stack>
+              </Paper>
+            )
+          )}
         </Stack>
       </Paper>
 
@@ -380,28 +395,31 @@ function ColorAnalyzer({ canSaveHistory, imageDataUrl, onRetake, onSaved }: Colo
             {!canSaveHistory ? '保存できません' : isSaving ? '保存しています' : '保存して次へ'}
           </Button>
 
-          <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5}>
-            <Button fullWidth onClick={onRetake} startIcon={<ReplayOutlinedIcon />} variant="outlined">
-              撮り直す
-            </Button>
-            <Button
-              disabled={!guidance}
-              fullWidth
-              onClick={handleReplaySpeech}
-              startIcon={<CampaignOutlinedIcon />}
-              variant="outlined"
-            >
-              もう一度読む
-            </Button>
-            <Button
-              fullWidth
-              onClick={handleAudioToggle}
-              startIcon={audioEnabled ? <VolumeOffOutlinedIcon /> : <VolumeUpOutlinedIcon />}
-              variant="outlined"
-            >
-              {audioEnabled ? '音を止める' : '音を出す'}
-            </Button>
-          </Stack>
+          <Button
+            fullWidth
+            onClick={handleAudioToggle}
+            startIcon={audioEnabled ? <VolumeOffOutlinedIcon /> : <VolumeUpOutlinedIcon />}
+            variant="outlined"
+          >
+            {audioEnabled ? '音声オフ' : '音声オン'}
+          </Button>
+        </Stack>
+      </Paper>
+
+      <Paper component="section" aria-label="写真の確認" sx={{ overflow: 'hidden', p: { xs: 1.5, md: 2 } }}>
+        <Stack spacing={1.5}>
+          <Typography variant="h3">写真</Typography>
+          <Box
+            component="img"
+            src={imageDataUrl}
+            alt="撮影した布"
+            sx={{
+              aspectRatio: '4 / 3',
+              borderRadius: 3,
+              objectFit: 'cover',
+              width: '100%',
+            }}
+          />
         </Stack>
       </Paper>
     </Stack>
