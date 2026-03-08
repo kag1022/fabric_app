@@ -10,11 +10,31 @@ const CHANGE_EVENT_NAME = 'fabric-history-changed';
 
 export const MAX_HISTORY_RECORDS = 100;
 export const MAX_IMPORT_FILE_BYTES = 20 * 1024 * 1024;
-export const EXPORT_FILE_NAME = 'fabric-history.v1.json';
+export const EXPORT_FILE_NAME = 'fabric-history.v2.json';
 
-const HUE_NAMES = new Set(['無彩色', '赤', 'オレンジ', '黄', '緑', 'シアン', '青', '紫', 'マゼンタ']);
-const SATURATION_NAMES = new Set(['無彩色', '鈍い', '鮮やか']);
-const VALUE_NAMES = new Set(['黒', '暗', '中', '明', '白']);
+const CANONICAL_HUE_NAMES: Record<number, string> = {
+  0: 'グレー系',
+  1: '赤',
+  2: 'オレンジ',
+  3: '黄',
+  4: '緑',
+  5: '水色',
+  6: '青',
+  7: '紫',
+  8: 'ピンク',
+};
+
+const LEGACY_HUE_NAMES = new Set(['無彩色', '赤', 'オレンジ', '黄', '緑', 'シアン', '青', '紫', 'マゼンタ']);
+const CANONICAL_SATURATION_NAMES = new Set(['色が少ない', 'おだやか', 'はっきり']);
+const LEGACY_SATURATION_NAMES = new Set(['無彩色', '鈍い', '鮮やか']);
+const CANONICAL_VALUE_NAMES: Record<number, string> = {
+  0: '黒に近い',
+  1: '暗い',
+  2: 'ふつう',
+  3: '明るい',
+  4: '白に近い',
+};
+const LEGACY_VALUE_NAMES = new Set(['黒', '暗', '中', '明', '白']);
 
 interface FabricHistoryDatabase extends DBSchema {
   records: {
@@ -97,7 +117,7 @@ function isHueInfo(value: unknown): value is { category: number; name: string } 
     category >= 0 &&
     category <= 8 &&
     typeof name === 'string' &&
-    HUE_NAMES.has(name)
+    (name === CANONICAL_HUE_NAMES[category] || LEGACY_HUE_NAMES.has(name))
   );
 }
 
@@ -107,7 +127,10 @@ function isSaturationInfo(value: unknown): value is { name: string } {
   }
 
   const candidate = value as Record<string, unknown>;
-  return typeof candidate.name === 'string' && SATURATION_NAMES.has(candidate.name);
+  return (
+    typeof candidate.name === 'string' &&
+    (CANONICAL_SATURATION_NAMES.has(candidate.name) || LEGACY_SATURATION_NAMES.has(candidate.name))
+  );
 }
 
 function isValueInfo(value: unknown): value is { category: number; name: string } {
@@ -125,7 +148,7 @@ function isValueInfo(value: unknown): value is { category: number; name: string 
     category >= 0 &&
     category <= 4 &&
     typeof name === 'string' &&
-    VALUE_NAMES.has(name)
+    (name === CANONICAL_VALUE_NAMES[category] || LEGACY_VALUE_NAMES.has(name))
   );
 }
 
@@ -138,8 +161,33 @@ function isDominantRgb(value: unknown): value is { r: number; g: number; b: numb
   return isByte(candidate.r) && isByte(candidate.g) && isByte(candidate.b);
 }
 
-function isGroup(value: unknown): value is string {
-  return typeof value === 'string' && /^(C[1-8]-[0-4]|N-[0-4])$/.test(value);
+function canonicalizeHueInfo(value: { category: number; name: string }): { category: number; name: string } {
+  return {
+    category: value.category,
+    name: CANONICAL_HUE_NAMES[value.category],
+  };
+}
+
+function canonicalizeSaturationInfo(value: { name: string }): { name: string } {
+  const saturationNameMap: Record<string, string> = {
+    はっきり: 'はっきり',
+    無彩色: '色が少ない',
+    色が少ない: '色が少ない',
+    鈍い: 'おだやか',
+    おだやか: 'おだやか',
+    鮮やか: 'はっきり',
+  };
+
+  return {
+    name: saturationNameMap[value.name],
+  };
+}
+
+function canonicalizeValueInfo(value: { category: number; name: string }): { category: number; name: string } {
+  return {
+    category: value.category,
+    name: CANONICAL_VALUE_NAMES[value.category],
+  };
 }
 
 function normalizeAnalysis(value: unknown): ColorAnalysisResult {
@@ -147,14 +195,10 @@ function normalizeAnalysis(value: unknown): ColorAnalysisResult {
     throw new Error('解析結果の形式が不正です。');
   }
 
-  const { dominantRgb, group, hsv, hueInfo, saturationInfo, valueInfo } = value;
+  const { dominantRgb, hsv, hueInfo, saturationInfo, valueInfo } = value;
 
   if (!isDominantRgb(dominantRgb)) {
     throw new Error('dominantRgb が不正です。');
-  }
-
-  if (!isGroup(group)) {
-    throw new Error('group が不正です。');
   }
 
   if (!isHsv(hsv)) {
@@ -179,23 +223,14 @@ function normalizeAnalysis(value: unknown): ColorAnalysisResult {
       g: dominantRgb.g,
       r: dominantRgb.r,
     },
-    group,
     hsv: {
       h: hsv.h,
       s: hsv.s,
       v: hsv.v,
     },
-    hueInfo: {
-      category: hueInfo.category,
-      name: hueInfo.name,
-    },
-    saturationInfo: {
-      name: saturationInfo.name,
-    },
-    valueInfo: {
-      category: valueInfo.category,
-      name: valueInfo.name,
-    },
+    hueInfo: canonicalizeHueInfo(hueInfo),
+    saturationInfo: canonicalizeSaturationInfo(saturationInfo),
+    valueInfo: canonicalizeValueInfo(valueInfo),
   };
 }
 
@@ -295,7 +330,6 @@ async function serializeRecord(record: LocalFabricRecord): Promise<StoredFabricR
   return {
     createdAtMs: record.createdAtMs,
     dominantRgb: record.dominantRgb,
-    group: record.group,
     hsv: record.hsv,
     hueInfo: record.hueInfo,
     id: record.id,
@@ -310,7 +344,6 @@ function deserializeRecord(record: StoredFabricRecord): LocalFabricRecord {
   return {
     createdAtMs: record.createdAtMs,
     dominantRgb: record.dominantRgb,
-    group: record.group,
     hsv: record.hsv,
     hueInfo: record.hueInfo,
     id: record.id,
@@ -532,7 +565,6 @@ export async function buildLocalHistoryExport(): Promise<FabricHistoryExport> {
     records.map(async (record): Promise<LocalExportRecord> => ({
       createdAtMs: record.createdAtMs,
       dominantRgb: record.dominantRgb,
-      group: record.group,
       hsv: record.hsv,
       hueInfo: record.hueInfo,
       id: record.id,
@@ -545,7 +577,7 @@ export async function buildLocalHistoryExport(): Promise<FabricHistoryExport> {
   return {
     exportedAt: new Date().toISOString(),
     records: exportedRecords,
-    version: 1,
+    version: 2,
   };
 }
 
@@ -575,7 +607,7 @@ export async function importLocalHistoryExport(payload: unknown): Promise<Import
     throw new Error('取り込みファイルの形式が不正です。');
   }
 
-  if (payload.version !== 1) {
+  if (payload.version !== 1 && payload.version !== 2) {
     throw new Error('対応していない取り込みファイルです。');
   }
 
