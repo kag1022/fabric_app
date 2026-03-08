@@ -233,7 +233,9 @@ function toArrayBuffer(value: unknown): ArrayBuffer | null {
   }
 
   if (ArrayBuffer.isView(value)) {
-    return value.buffer.slice(value.byteOffset, value.byteOffset + value.byteLength);
+    const bytes = new Uint8Array(value.byteLength);
+    bytes.set(new Uint8Array(value.buffer, value.byteOffset, value.byteLength));
+    return bytes.buffer;
   }
 
   if (Object.prototype.toString.call(value) === '[object ArrayBuffer]') {
