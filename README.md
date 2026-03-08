@@ -1,135 +1,57 @@
-# Fabric Color Classifier
+# ぬの しわけ サポート
 
-このアプリケーションは、デバイスのカメラで布地の写真を撮影し、その色を自動で分析・分類して、パーソナルなデジタルギャラリーに保存するためのWebアプリケーションです。ReactとFirebaseを使用して構築されており、シンプルさとアクセシビリティを重視して設計されています。
+布の色が見分けにくい利用者向けに、写真からしわけ先を大きな文字と音声で案内する Web アプリです。保存はすべて端末内の `IndexedDB` に行い、サーバーやクラウド同期は使いません。
 
+## 特徴
 
-
-## 主な機能
-
-* **カメラ撮影機能**: デバイスのカメラを直接使用して布地の画像をキャプチャします。
-* **高精度な自動色分析**: 
-    * 撮影した画像から、k-meansクラスタリングアルゴリズムを用いて最大5つの主要な色（ドミナントカラー）を抽出します。
-    * 抽出された色は、以下の基準で詳細に分析されます：
-        * **色相 (Hue)**: 8つのカテゴリ（赤、オレンジ、黄、緑、シアン、青、紫、マゼンタ）または無彩色に分類。
-        * **彩度 (Saturation)**: 「鮮やか」「鈍い」「無彩色」の3段階で評価。
-        * **明度 (Value)**: 「黒」「暗」「中」「明」「白」の5段階に分類。
-* **カラーパレット表示**: 抽出したドミナントカラーをパレットとして表示し、布地の色構成を視覚的に確認できます。
-* **自動グループ分け**: 
-    * 分析結果に基づき、独自のグループコードを割り当てて自動整理します。
-    * **命名規則**: `C[色相]-[明度]` (例: `C1-3` は「赤・明」)、または無彩色の場合は `N-[明度]` (例: `N-0` は「黒」)。
-* **Firebaseバックエンド**: 撮影した画像データ、分析結果はすべてFirebaseに安全に保存されます。
-    * **Authentication**: 匿名認証により、ユーザーごとにデータを管理します。
-    * **Cloud Firestore**: 色分析結果や画像のURLなどのメタデータを保存します。
-    * **Cloud Storage**: 撮影した画像ファイル本体を保存します。
-* **ストレージ自動管理機能**: Cloud Functionsを利用し、ユーザー一人あたりのストレージ使用量が3GBを超えた場合、作成日時の古いものから自動的に削除してコストを管理します。
-* **デザイン**:
-    * **ダークモード**: デフォルトで目に優しいダークモードを採用し、コンテンツ（布地の色）がより際立つように設計されています。
-* **直感的な画面遷移**:
-    * **ページ分割**: カメラ（撮影画面）とギャラリー（保存済み画像一覧）を独立したページに分割し、目的の機能に集中しやすい設計にしました。
-    * **ボトムナビゲーション**: 画面下部のナビゲーションバーをタップするだけで、カメラとギャラリーをスムーズに行き来できます。
-* **アクセシビリティ対応**: セマンティックなHTML、適切なARIA属性、キーボード操作への配慮など、アクセシビリティを考慮したUI設計を行っています。
-* **レスポンシブデザイン**: スマートフォンでの操作を第一に考えたモバイルファーストなデザインを採用しています。
+- `とる -> たしかめる -> この端末に保存` の 3 ステップで使えます。
+- 色分析はブラウザ内で完結し、ネットワークやログインに依存しません。
+- 履歴は同じ端末・同じブラウザ内にだけ保存されます。
+- 職員向けに `fabric-history.v1.json` のエクスポート / インポートを用意しています。
+- ルーティングは `HashRouter` を使うため、`/#/history` を含む静的配信だけで動作します。
 
 ## 技術スタック
 
-#### フロントエンド
-* **React** (with TypeScript)
-* **Create React App**
-* **Material-UI (MUI)**: UIコンポーネントライブラリ
-* **ml-kmeans**: 色分析のためのk-meansクラスタリングライブラリ
+- React 19 + TypeScript
+- Vite
+- Material UI
+- `ml-kmeans`
+- `IndexedDB` + `idb`
 
-#### バックエンド & デプロイ
-* **Firebase**
-    * Authentication
-    * Cloud Firestore
-    * Cloud Storage
-    * Cloud Functions (for TypeScript)
-* **Vercel**: フロントエンドのホスティング
-
----
-
-## セットアップとローカルでの実行方法
-
-このプロジェクトをローカル環境でセットアップし、実行するための手順です。
-
-### 前提条件
-* Node.js (v14以上)
-* npm
-* Firebase アカウント
-* Google Cloud アカウント（Firebaseプロジェクトに紐づくもの）
-
-### 1. プロジェクトのクローン
-```bash
-git clone [https://github.com/YOUR_USERNAME/YOUR_REPOSITORY.git](https://github.com/YOUR_USERNAME/YOUR_REPOSITORY.git)
-cd YOUR_REPOSITORY
-```
-
-### 2. Firebase プロジェクトの準備
-1.  [Firebaseコンソール](https://console.firebase.google.com/)で新しいプロジェクトを作成します。
-2.  プロジェクト設定から、ウェブアプリを登録し、`firebaseConfig`オブジェクトを取得します。
-3.  以下のFirebaseサービスを有効化してください:
-    * **Authentication**: 匿名認証
-    * **Cloud Firestore**: データベースを作成（テストモードで開始）
-    * **Cloud Storage**: ストレージバケットを作成
-
-### 3. 環境変数の設定
-プロジェクトの**ルートディレクトリ**（`package.json`と同じ階層）に`.env.local`という名前のファイルを作成し、Firebaseから取得した`firebaseConfig`の値を入力します。
-
-**.env.local**
-```env
-REACT_APP_API_KEY="YOUR_API_KEY"
-REACT_APP_AUTH_DOMAIN="YOUR_AUTH_DOMAIN"
-REACT_APP_PROJECT_ID="YOUR_PROJECT_ID"
-REACT_APP_STORAGE_BUCKET="YOUR_STORAGE_BUCKET"
-REACT_APP_MESSAGING_SENDER_ID="YOUR_MESSAGING_SENDER_ID"
-REACT_APP_APP_ID="YOUR_APP_ID"
-REACT_APP_MEASUREMENT_ID="YOUR_MEASUREMENT_ID"
-```
-**注意**: このファイルは`.gitignore`に含まれているため、GitHubには公開されません。
-
-### 4. 依存関係のインストール
-フロントエンドとバックエンド（Cloud Functions）の両方で、必要なパッケージをインストールします。
+## ローカル実行
 
 ```bash
-# 1. フロントエンド（Reactアプリ）の依存関係をインストール
 npm install
-
-# 2. バックエンド（Cloud Functions）の依存関係をインストール
-cd functions
-npm install
-cd ..
+npm run dev
 ```
 
-### 5. ローカルサーバーの起動
-以下のコマンドで、Reactアプリケーションがローカルで起動します。
-```bash
-npm start
-```
-ブラウザで `http://localhost:3000` が開きます。
+ブラウザで表示された URL を開くと利用できます。環境変数は不要です。
 
----
-
-## デプロイ方法
-
-このアプリケーションは、フロントエンドとバックエンドを別々にデプロイする必要があります。
-
-### 1. バックエンド（Cloud Functions）のデプロイ
-ストレージ管理機能（`manageStorageUsage`）をFirebaseにデプロイします。
+## ビルド
 
 ```bash
-# functionsディレクトリに移動
-cd functions
-
-# Firebaseにデプロイ
-npm run deploy -- --only functions
+npm run build
 ```
-**注意**: 
-* 初回デプロイ時には、権限に関するエラーが発生することがあります。その場合は、エラーメッセージに表示される`gcloud`コマンドを[Google Cloud Shell](https://console.cloud.google.com/)で実行してください。
-* `functions/src/index.ts` 内でリージョンが **`asia-northeast1` (Tokyo)** に設定されています。Firebaseプロジェクトが異なるリージョンにある場合は、コード内のリージョン設定を変更してからデプロイしてください。
 
-### 2. フロントエンド（React App）のデプロイ
-VercelとGitHubリポジトリを連携させることで、`git push`をトリガーに自動でデプロイが実行されます。
+生成された `dist/` を静的ホスティングへ配置すれば動作します。
 
-1.  **Vercelプロジェクトの作成**: [Vercel](https://vercel.com/)で、このプロジェクトのGitHubリポジトリをインポートして新しいプロジェクトを作成します。
-2.  **環境変数の設定**: Vercelのプロジェクト設定画面（Settings > Environment Variables）で、`.env.local`に設定したものと**全く同じキーと値**を登録します。
-3.  **デプロイ**: `main`ブランチなどに`git push`すると、自動的にデプロイが開始されます。
+## 配布
+
+- 既定の配布先は `Vercel` の静的ホスティングです。
+- `vercel.json` にセキュリティヘッダーを定義しています。
+- `HashRouter` を使っているため、GitHub Pages や単純な静的サーバーでもそのまま配布できます。
+
+## データ保存
+
+- 保存内容: 解析結果 + 640px JPEG プレビュー
+- 保存上限: 100 件
+- 超過時: 古い履歴から自動削除
+- 共有範囲: 端末・ブラウザ単位
+
+## テスト
+
+```bash
+npm test -- --run
+```
+
+`fake-indexeddb` を使ってローカル履歴の保存・削除・取り込みを検証します。

@@ -1,225 +1,170 @@
-import React, { useState, useEffect } from 'react';
-import { ThemeProvider, createTheme, styled } from '@mui/material/styles';
-import CssBaseline from '@mui/material/CssBaseline';
-import Container from '@mui/material/Container';
-import Typography from '@mui/material/Typography';
-import Box from '@mui/material/Box';
-import Paper from '@mui/material/Paper';
-import BottomNavigation from '@mui/material/BottomNavigation';
-import BottomNavigationAction from '@mui/material/BottomNavigationAction';
-import CameraAltIcon from '@mui/icons-material/CameraAlt';
-import CollectionsIcon from '@mui/icons-material/Collections';
-
-import { Routes, Route, useNavigate, useLocation } from 'react-router-dom';
-
-// Firebase
-import { auth } from './firebase';
-import { onAuthStateChanged, signInAnonymously, User } from 'firebase/auth';
-import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
-import { getDownloadURL, ref, uploadString } from 'firebase/storage';
-import { db, storage } from './firebase';
+import { Suspense, lazy } from 'react';
+import { Link as RouterLink, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
+import {
+  Alert,
+  Box,
+  Button,
+  CircularProgress,
+  Container,
+  CssBaseline,
+  Paper,
+  Stack,
+  Typography,
+} from '@mui/material';
+import { ThemeProvider, createTheme, responsiveFontSizes } from '@mui/material/styles';
+import HistoryOutlinedIcon from '@mui/icons-material/HistoryOutlined';
+import CameraAltOutlinedIcon from '@mui/icons-material/CameraAltOutlined';
 
 import CameraView from './components/CameraView';
-import FabricGallery from './components/FabricGallery';
-import { ColorAnalysisResult } from './utils/colorUtils';
+import { isLocalHistorySupported } from './services/localHistory';
 
-export interface FabricItem extends ColorAnalysisResult {
-  id: string;
-  imageDataUrl: string;
-  createdAt: any;
-}
+const FabricGallery = lazy(() => import('./components/FabricGallery'));
 
-const darkTheme = createTheme({
+let appTheme = createTheme({
   palette: {
-    mode: 'dark',
+    mode: 'light',
     primary: {
-      main: '#00e5ff', // Cyberpunk Cyan
+      main: '#156f5b',
+      dark: '#0f5645',
+      contrastText: '#ffffff',
     },
     secondary: {
-      main: '#ff4081', // Pink accent
+      main: '#f2a65a',
+      dark: '#c67a2a',
     },
     background: {
-      default: 'transparent', // Let gradient show through
-      paper: 'rgba(255, 255, 255, 0.05)', // Glass effect base
+      default: '#f7f2e8',
+      paper: 'rgba(255, 255, 255, 0.92)',
     },
     text: {
-      primary: '#ffffff',
-      secondary: 'rgba(255, 255, 255, 0.7)',
-    },
-  },
-  typography: {
-    fontFamily: '"Inter", "Noto Sans JP", sans-serif',
-    h3: {
-      fontWeight: 700,
-      letterSpacing: '-0.02em',
-    },
-    h4: {
-      fontWeight: 600,
-      letterSpacing: '-0.01em',
-    },
-    button: {
-      fontWeight: 600,
-      textTransform: 'none', // Modern feel
+      primary: '#21313c',
+      secondary: '#4d5d65',
     },
   },
   shape: {
-    borderRadius: 16, // Softer, modern corners
+    borderRadius: 24,
+  },
+  typography: {
+    fontFamily: '"Noto Sans JP", sans-serif',
+    h1: {
+      fontSize: 'clamp(2.2rem, 4vw, 3.6rem)',
+      fontWeight: 900,
+      lineHeight: 1.15,
+    },
+    h2: {
+      fontSize: 'clamp(1.8rem, 3vw, 2.5rem)',
+      fontWeight: 800,
+      lineHeight: 1.2,
+    },
+    h3: {
+      fontSize: 'clamp(1.5rem, 2.5vw, 2rem)',
+      fontWeight: 800,
+    },
+    button: {
+      fontSize: '1.1rem',
+      fontWeight: 800,
+      textTransform: 'none',
+    },
   },
   components: {
-    MuiCssBaseline: {
+    MuiButton: {
       styleOverrides: {
-        body: {
-          backgroundColor: 'transparent', // Handled by index.css
-          scrollbarColor: "#6b6b6b #2b2b2b",
-          "&::-webkit-scrollbar, & *::-webkit-scrollbar": {
-            backgroundColor: "#2b2b2b",
-          },
-          "&::-webkit-scrollbar-thumb, & *::-webkit-scrollbar-thumb": {
-            borderRadius: 8,
-            backgroundColor: "#6b6b6b",
-            minHeight: 24,
-            border: "3px solid #2b2b2b",
-          },
+        root: {
+          borderRadius: 18,
+          minHeight: 56,
+          paddingInline: 20,
         },
       },
     },
     MuiPaper: {
       styleOverrides: {
         root: {
-          backdropFilter: 'blur(16px)',
-          border: '1px solid rgba(255, 255, 255, 0.1)',
-          boxShadow: '0 4px 30px rgba(0, 0, 0, 0.1)',
+          backdropFilter: 'blur(12px)',
+          border: '1px solid rgba(33, 49, 60, 0.08)',
+          boxShadow: '0 18px 45px rgba(60, 72, 82, 0.08)',
         },
       },
     },
-    MuiCard: {
-      styleOverrides: {
-        root: {
-          background: 'rgba(255, 255, 255, 0.05)', // Glassy
-          backdropFilter: 'blur(16px)',
-          border: '1px solid rgba(255, 255, 255, 0.1)',
-        },
-      },
-    },
-    MuiButton: {
-      styleOverrides: {
-        root: {
-          borderRadius: 24, // Pill shape
-          padding: '8px 24px',
-          boxShadow: '0 4px 14px 0 rgba(0,0,0,0.3)',
-        },
-        containedPrimary: {
-          background: 'linear-gradient(45deg, #00e5ff 30%, #00b0ff 90%)',
-          color: '#000',
-          fontWeight: 'bold',
-        },
-      },
-    },
-    MuiBottomNavigation: {
-      styleOverrides: {
-        root: {
-          backgroundColor: 'rgba(20, 20, 20, 0.8)',
-          backdropFilter: 'blur(20px)',
-          borderTop: '1px solid rgba(255, 255, 255, 0.1)',
-        }
-      }
-    }
   },
 });
 
-const Main = styled('main')(({ theme }) => ({
-  paddingTop: theme.spacing(4),
-  paddingBottom: theme.spacing(10), // Increased bottom padding for nav bar
-  minHeight: '100vh',
-}));
+appTheme = responsiveFontSizes(appTheme);
 
 function App() {
-  const [user, setUser] = useState<User | null>(null);
-  const navigate = useNavigate();
+  const canSaveHistory = isLocalHistorySupported();
   const location = useLocation();
-
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-      if (currentUser) {
-        setUser(currentUser);
-      } else {
-        signInAnonymously(auth).catch((error) => {
-          console.error("Anonymous sign-in failed:", error);
-        });
-      }
-    });
-    return () => {
-      if (typeof unsubscribe === 'function') {
-        unsubscribe();
-      }
-    };
-  }, []);
-
-  const handleAddFabric = async (result: ColorAnalysisResult, imageDataUrl: string) => {
-    if (!user) {
-      console.error("User not authenticated.");
-      return;
-    }
-    try {
-      const storageRef = ref(storage, `fabrics/${user.uid}/${new Date().toISOString()}.jpg`);
-      await uploadString(storageRef, imageDataUrl, 'data_url');
-      const downloadURL = await getDownloadURL(storageRef);
-
-      await addDoc(collection(db, "users", user.uid, "fabrics"), {
-        ...result,
-        imageDataUrl: downloadURL,
-        createdAt: serverTimestamp(),
-      });
-
-      // ギャラリーへ遷移
-      navigate('/gallery');
-    } catch (error) {
-      console.error("Error saving to Firebase: ", error);
-    }
-  };
+  const navigate = useNavigate();
 
   return (
-    <ThemeProvider theme={darkTheme}>
+    <ThemeProvider theme={appTheme}>
       <CssBaseline />
-      <Main>
-        <Container maxWidth="md">
-          <Box sx={{ textAlign: 'center', mb: 3 }}>
-            <Typography variant="h5" component="h1" sx={{ fontWeight: 800, background: 'linear-gradient(45deg, #00e5ff, #ff4081)', backgroundClip: 'text', textFillColor: 'transparent', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
-              Fabric Color Classifier
-            </Typography>
-          </Box>
-
-          <Routes>
-            <Route path="/" element={
-              <Box>
-                <Box sx={{ mb: 2, textAlign: 'center' }}>
-                  <Typography variant="body1" color="text.secondary">
-                    布地の写真を撮って、色で自動的に分類・整理しましょう。
+      <Box sx={{ minHeight: '100vh', pb: 6, pt: { xs: 3, md: 5 } }}>
+        <Container maxWidth="lg">
+          <Stack spacing={3}>
+            <Paper sx={{ overflow: 'hidden', p: { xs: 3, md: 4 } }}>
+              <Stack spacing={2.5}>
+                <Typography component="h1" variant="h1">
+                  ぬの しわけ サポート
+                </Typography>
+                <Typography color="text.secondary" sx={{ fontSize: '1.15rem', maxWidth: 720 }}>
+                  色の見分けがむずかしいときに、写真からしわけ先を大きく案内します。操作は
+                  3 ステップだけです。
+                </Typography>
+                <Stack
+                  alignItems={{ sm: 'center' }}
+                  direction={{ xs: 'column', sm: 'row' }}
+                  spacing={1.5}
+                >
+                  <Button
+                    color={location.pathname === '/history' ? 'secondary' : 'primary'}
+                    component={RouterLink}
+                    startIcon={
+                      location.pathname === '/history' ? (
+                        <CameraAltOutlinedIcon />
+                      ) : (
+                        <HistoryOutlinedIcon />
+                      )
+                    }
+                    to={location.pathname === '/history' ? '/' : '/history'}
+                    variant="contained"
+                  >
+                    {location.pathname === '/history' ? 'しわけ画面へ戻る' : '最近の記録を見る'}
+                  </Button>
+                  <Typography color="text.secondary">
+                    記録はこの端末の中だけに残ります。必要なときだけ書き出して持ち出せます。
                   </Typography>
-                </Box>
-                <CameraView onAddFabric={handleAddFabric} />
-              </Box>
-            } />
-            <Route path="/gallery" element={
-              user ? <FabricGallery userId={user.uid} /> : <Typography sx={{ textAlign: 'center', mt: 4 }}>Login required to view gallery</Typography>
-            } />
-          </Routes>
-        </Container>
-      </Main>
+                </Stack>
+              </Stack>
+            </Paper>
 
-      <Paper sx={{ position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 1000 }} elevation={3}>
-        <BottomNavigation
-          showLabels
-          value={location.pathname === '/gallery' ? 1 : 0}
-          onChange={(event, newValue) => {
-            if (newValue === 0) navigate('/');
-            else navigate('/gallery');
-          }}
-        >
-          <BottomNavigationAction label="Camera" icon={<CameraAltIcon />} />
-          <BottomNavigationAction label="Gallery" icon={<CollectionsIcon />} />
-        </BottomNavigation>
-      </Paper>
+            {!canSaveHistory && (
+              <Alert severity="warning" sx={{ borderRadius: 4 }}>
+                このブラウザでは端末内の記録保存が使えません。仕分け案内だけ利用できます。
+              </Alert>
+            )}
+
+            <Suspense
+              fallback={
+                <Paper sx={{ p: 4 }}>
+                  <Stack alignItems="center" spacing={2}>
+                    <CircularProgress size={52} />
+                    <Typography variant="h3">記録画面を準備しています</Typography>
+                  </Stack>
+                </Paper>
+              }
+            >
+              <Routes>
+                <Route
+                  element={<CameraView canSaveHistory={canSaveHistory} onSaved={() => navigate('/history')} />}
+                  path="/"
+                />
+                <Route element={<FabricGallery />} path="/history" />
+                <Route element={<Navigate replace to="/" />} path="*" />
+              </Routes>
+            </Suspense>
+          </Stack>
+        </Container>
+      </Box>
     </ThemeProvider>
   );
 }

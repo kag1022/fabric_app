@@ -1,180 +1,348 @@
-import React, { useRef, useState, useCallback, useEffect } from 'react';
-import { Box, Typography, Button, Grid, Paper, CircularProgress, Alert } from '@mui/material';
-import AddPhotoAlternateIcon from '@mui/icons-material/AddPhotoAlternate';
+import { useEffect, useEffectEvent, useRef, useState } from 'react';
 import {
-  rgbToHsv,
+  Alert,
+  Box,
+  Button,
+  CircularProgress,
+  Paper,
+  Stack,
+  Typography,
+} from '@mui/material';
+import CampaignOutlinedIcon from '@mui/icons-material/CampaignOutlined';
+import Inventory2OutlinedIcon from '@mui/icons-material/Inventory2Outlined';
+import ReplayOutlinedIcon from '@mui/icons-material/ReplayOutlined';
+import VolumeOffOutlinedIcon from '@mui/icons-material/VolumeOffOutlined';
+
+import { saveLocalFabricCapture } from '../services/localHistory';
+import { buildFabricGuidance } from '../utils/fabricGuidance';
+import { getDominantColors } from '../utils/colorClustering';
+import {
   classifyHue,
+  classifySaturation,
   classifyValue,
   getGroupName,
-  ColorAnalysisResult,
-  classifySaturation,
+  rgbToHsv,
+  type ColorAnalysisResult,
 } from '../utils/colorUtils';
-import { getDominantColors } from '../utils/colorClustering';
+import StepProgress from './StepProgress';
 
 interface ColorAnalyzerProps {
+  canSaveHistory: boolean;
   imageDataUrl: string;
-  onAddToGallery: (result: ColorAnalysisResult, imageDataUrl: string) => void;
+  onRetake: () => void;
+  onSaved: () => void;
 }
 
-const ColorAnalyzer: React.FC<ColorAnalyzerProps> = ({ imageDataUrl, onAddToGallery }) => {
+function ColorAnalyzer({ canSaveHistory, imageDataUrl, onRetake, onSaved }: ColorAnalyzerProps) {
   const [analysisResults, setAnalysisResults] = useState<ColorAnalysisResult[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isAnalyzing, setIsAnalyzing] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [audioEnabled, setAudioEnabled] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const imageRef = useRef<HTMLImageElement>(null);
 
-  const analyzeColor = useCallback(() => {
-    if (!imageRef.current || !imageRef.current.complete || imageRef.current.naturalWidth === 0) {
-      setError("画像の読み込みに失敗しました。再撮影してください。");
-      setIsLoading(false);
+  const announceResult = useEffectEvent((message: string) => {
+    if (
+      !audioEnabled ||
+      typeof window === 'undefined' ||
+      typeof window.speechSynthesis === 'undefined'
+    ) {
       return;
     }
+
+    window.speechSynthesis.cancel();
+
+    const utterance = new SpeechSynthesisUtterance(message);
+    utterance.lang = 'ja-JP';
+    utterance.pitch = 1;
+    utterance.rate = 0.92;
+
+    window.speechSynthesis.speak(utterance);
+  });
+
+  useEffect(() => {
+    setAnalysisResults([]);
     setError(null);
+    setIsAnalyzing(true);
+    setIsSaving(false);
+  }, [imageDataUrl]);
+
+  useEffect(() => {
+    return () => {
+      if (typeof window !== 'undefined' && typeof window.speechSynthesis !== 'undefined') {
+        window.speechSynthesis.cancel();
+      }
+    };
+  }, []);
+
+  const analyzeColor = () => {
+    if (!imageRef.current || !imageRef.current.complete || imageRef.current.naturalWidth === 0) {
+      setError('画像の読み込みに失敗しました。もう一度撮影してください。');
+      setIsAnalyzing(false);
+      return;
+    }
 
     try {
-      const canvas = document.createElement("canvas");
-      const context = canvas.getContext("2d", { willReadFrequently: true });
-      if (!context) throw new Error("Canvas Contextの取得に失敗しました。");
+      const canvas = document.createElement('canvas');
+      const context = canvas.getContext('2d', { willReadFrequently: true });
 
-      const img = imageRef.current;
-      const imgWidth = img.naturalWidth;
-      const imgHeight = img.naturalHeight;
-      canvas.width = imgWidth;
-      canvas.height = imgHeight;
-      context.drawImage(img, 0, 0, imgWidth, imgHeight);
+      if (!context) {
+        throw new Error('画像を分析できませんでした。');
+      }
 
-      const startX = Math.floor(imgWidth * 0.05);
-      const startY = Math.floor(imgHeight * 0.05);
-      const width = Math.floor(imgWidth * 0.9);
-      const height = Math.floor(imgHeight * 0.9);
-      const imageData = context.getImageData(startX, startY, width, height);
+      const image = imageRef.current;
+      canvas.width = image.naturalWidth;
+      canvas.height = image.naturalHeight;
+      context.drawImage(image, 0, 0, image.naturalWidth, image.naturalHeight);
 
+      const startX = Math.floor(image.naturalWidth * 0.05);
+      const startY = Math.floor(image.naturalHeight * 0.05);
+      const sampleWidth = Math.floor(image.naturalWidth * 0.9);
+      const sampleHeight = Math.floor(image.naturalHeight * 0.9);
+      const imageData = context.getImageData(startX, startY, sampleWidth, sampleHeight);
       const dominantColors = getDominantColors(imageData.data, 5);
 
       if (dominantColors.length === 0) {
-        throw new Error("主要色の計算に失敗しました。");
+        throw new Error('主要な色を見つけられませんでした。');
       }
 
-      const results: ColorAnalysisResult[] = dominantColors.map(color => {
+      const nextResults = dominantColors.map((color) => {
         const hsv = rgbToHsv(color.r, color.g, color.b);
         const saturationInfo = classifySaturation(hsv.s);
-        const hueInfo = saturationInfo.name === '無彩色'
-          ? { category: 0, name: '無彩色' }
-          : classifyHue(hsv.h);
+        const hueInfo =
+          saturationInfo.name === '無彩色'
+            ? { category: 0, name: '無彩色' }
+            : classifyHue(hsv.h);
         const valueInfo = classifyValue(hsv.s, hsv.v);
         const group = getGroupName(hueInfo, valueInfo, saturationInfo);
 
         return {
           dominantRgb: color,
+          group,
           hsv,
           hueInfo,
           saturationInfo,
           valueInfo,
-          group,
         };
       });
 
-      setAnalysisResults(results);
-    } catch (e: any) {
-      setError(`色分析中にエラーが発生しました: ${e.message}`);
+      setAnalysisResults(nextResults);
+      setError(null);
+    } catch (analysisError) {
+      console.error('Color analysis failed.', analysisError);
+      setError('色の分析に失敗しました。もう一度撮影してください。');
     } finally {
-      setIsLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    setIsLoading(true);
-    setError(null);
-    setAnalysisResults([]);
-  }, [imageDataUrl]);
-
-  const handleSave = () => {
-    if (analysisResults.length > 0) {
-      // 一番大きいクラスタの結果を保存する
-      onAddToGallery(analysisResults[0], imageDataUrl);
+      setIsAnalyzing(false);
     }
   };
 
-  const mainResult = analysisResults.length > 0 ? analysisResults[0] : null;
+  const mainResult = analysisResults[0] ?? null;
+  const guidance = mainResult ? buildFabricGuidance(mainResult) : null;
+  const speechText = guidance?.speechText ?? null;
+
+  useEffect(() => {
+    if (speechText) {
+      announceResult(speechText);
+    }
+  }, [announceResult, speechText]);
+
+  const handleReplaySpeech = () => {
+    if (guidance) {
+      announceResult(guidance.speechText);
+    }
+  };
+
+  const handleSave = async () => {
+    if (!mainResult || !canSaveHistory) {
+      return;
+    }
+
+    setIsSaving(true);
+    setError(null);
+
+    try {
+      await saveLocalFabricCapture(imageDataUrl, mainResult);
+      onSaved();
+    } catch (saveError) {
+      console.error('Failed to save the local fabric record.', saveError);
+      setError('記録に失敗しました。このブラウザの保存設定を確認してください。');
+      setIsSaving(false);
+    }
+  };
 
   return (
-    <Box sx={{ width: "100%", mt: 2 }}>
-      <Paper elevation={4} sx={{ p: 3 }}>
-        <img
-          ref={imageRef}
-          src={imageDataUrl}
-          alt="分析対象の布地画像"
-          style={{ display: "none" }}
-          onLoad={analyzeColor}
-          onError={() => { setError("画像の読み込みに失敗しました。"); setIsLoading(false); }}
-        />
-        <Box aria-live="polite" sx={{ minHeight: 180 }}>
-          {isLoading && (
-            <Box sx={{ display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", height: "100%" }}>
-              <CircularProgress />
-              <Typography sx={{ mt: 2 }}>分析中...</Typography>
+    <Stack spacing={3}>
+      <StepProgress activeStep={isSaving ? 2 : 1} />
+
+      <Paper sx={{ p: { xs: 2.5, md: 3.5 } }}>
+        <Stack spacing={3}>
+          <Box>
+            <Typography variant="h2">2. たしかめる</Typography>
+            <Typography color="text.secondary" sx={{ mt: 1 }}>
+              色の名前と、しまうグループを大きく表示します。
+            </Typography>
+          </Box>
+
+          <img
+            alt="分析する布の写真"
+            onError={() => {
+              setError('画像の読み込みに失敗しました。');
+              setIsAnalyzing(false);
+            }}
+            onLoad={analyzeColor}
+            ref={imageRef}
+            src={imageDataUrl}
+            style={{ display: 'none' }}
+          />
+
+          <Box
+            component="img"
+            src={imageDataUrl}
+            alt="撮影した布"
+            sx={{
+              aspectRatio: '4 / 3',
+              borderRadius: 4,
+              objectFit: 'cover',
+              width: '100%',
+            }}
+          />
+
+          {isAnalyzing && (
+            <Box
+              aria-live="polite"
+              sx={{
+                alignItems: 'center',
+                backgroundColor: 'rgba(21, 111, 91, 0.08)',
+                borderRadius: 4,
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 2,
+                justifyContent: 'center',
+                minHeight: 220,
+              }}
+            >
+              <CircularProgress size={56} />
+              <Typography variant="h3">色をみています</Typography>
             </Box>
           )}
-          {error && <Alert severity="error">{error}</Alert>}
-          {mainResult && !isLoading && (
-            <Grid container spacing={2} alignItems="center">
-              <Grid item xs={4}>
-                <Paper
-                  aria-label={`主要色: ${mainResult.group}`}
-                  sx={{
-                    backgroundColor: `rgb(${mainResult.dominantRgb.r}, ${mainResult.dominantRgb.g}, ${mainResult.dominantRgb.b})`,
-                    width: "100%",
-                    paddingTop: "100%",
-                    borderRadius: 4,
-                    border: "1px solid rgba(255, 255, 255, 0.2)"
-                  }}
-                />
-              </Grid>
-              <Grid item xs={8}>
-                <Typography variant="h5" component="p">グループ: {mainResult.group}</Typography>
-                <Typography variant="body1">色分類: {mainResult.hueInfo.name}</Typography>
-                <Typography variant="body1">明度: {mainResult.valueInfo.name}</Typography>
-                <Typography variant="caption" color="text.secondary">
-                  鮮やかさ: {mainResult.saturationInfo.name}
-                </Typography>
-              </Grid>
-              {analysisResults.length > 1 && (
-                <Grid item xs={12}>
-                  <Typography variant="subtitle1" sx={{ mt: 2 }}>カラーパレット</Typography>
-                  <Box sx={{ display: 'flex', gap: 1, mt: 1 }}>
-                    {analysisResults.map((result, index) => (
-                      <Paper
-                        key={index}
-                        sx={{
-                          backgroundColor: `rgb(${result.dominantRgb.r}, ${result.dominantRgb.g}, ${result.dominantRgb.b})`,
-                          width: 40,
-                          height: 40,
-                          borderRadius: 2,
-                          border: "1px solid rgba(0, 0, 0, 0.1)"
-                        }}
-                        title={`${result.group} | ${result.hueInfo.name}`}
-                      />
-                    ))}
-                  </Box>
-                </Grid>
-              )}
-            </Grid>
+
+          {error && (
+            <Alert severity="error" sx={{ borderRadius: 3 }}>
+              {error}
+            </Alert>
           )}
-        </Box>
-        <Box sx={{ mt: 3, textAlign: "center" }}>
-          <Button
-            variant="contained"
-            color="primary"
-            size="large"
-            onClick={handleSave}
-            disabled={analysisResults.length === 0 || isLoading}
-            startIcon={<AddPhotoAlternateIcon />}
-          >
-            ギャラリーに追加
-          </Button>
-        </Box>
+
+          {!canSaveHistory && (
+            <Alert severity="info" sx={{ borderRadius: 3 }}>
+              このブラウザでは記録保存が使えません。仕分け案内だけ利用できます。
+            </Alert>
+          )}
+
+          {mainResult && !isAnalyzing && guidance && (
+            <Stack spacing={2.5}>
+              <Paper
+                aria-live="assertive"
+                sx={{
+                  background:
+                    'linear-gradient(160deg, rgba(21,111,91,0.92), rgba(15,86,69,0.92))',
+                  color: '#ffffff',
+                  p: { xs: 2.5, md: 3 },
+                }}
+              >
+                <Stack spacing={1.5}>
+                  <Typography sx={{ fontSize: '1rem', fontWeight: 700 }}>しわけ先</Typography>
+                  <Typography sx={{ fontSize: 'clamp(2.3rem, 5vw, 4rem)', fontWeight: 900 }}>
+                    {guidance.supportCode}
+                  </Typography>
+                  <Typography sx={{ fontSize: '1.5rem', fontWeight: 800 }}>
+                    {guidance.headline}
+                  </Typography>
+                  <Typography sx={{ fontSize: '1.2rem' }}>{guidance.instruction}</Typography>
+                </Stack>
+              </Paper>
+
+              <Stack
+                direction={{ xs: 'column', md: 'row' }}
+                spacing={2}
+                sx={{ alignItems: { md: 'stretch' } }}
+              >
+                <Paper
+                  sx={{
+                    alignItems: 'center',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 1.5,
+                    justifyContent: 'center',
+                    minHeight: 150,
+                    p: 2,
+                    width: { xs: '100%', md: 200 },
+                  }}
+                >
+                  <Typography fontWeight={800}>参考色</Typography>
+                  <Box
+                    aria-hidden="true"
+                    sx={{
+                      backgroundColor: `rgb(${mainResult.dominantRgb.r}, ${mainResult.dominantRgb.g}, ${mainResult.dominantRgb.b})`,
+                      border: '3px solid rgba(33, 49, 60, 0.1)',
+                      borderRadius: 4,
+                      height: 88,
+                      width: 88,
+                    }}
+                  />
+                </Paper>
+
+                <Paper sx={{ flexGrow: 1, p: 2.5 }}>
+                  <Stack spacing={1.25}>
+                    <Typography fontWeight={800}>読み取り結果</Typography>
+                    <Typography sx={{ fontSize: '1.15rem' }}>
+                      色の名前: <strong>{mainResult.hueInfo.name}</strong>
+                    </Typography>
+                    <Typography sx={{ fontSize: '1.15rem' }}>
+                      明るさ: <strong>{mainResult.valueInfo.name}</strong>
+                    </Typography>
+                    <Typography sx={{ fontSize: '1.15rem' }}>
+                      鮮やかさ: <strong>{mainResult.saturationInfo.name}</strong>
+                    </Typography>
+                  </Stack>
+                </Paper>
+              </Stack>
+            </Stack>
+          )}
+
+          <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5}>
+            <Button
+              disabled={!guidance}
+              onClick={handleReplaySpeech}
+              startIcon={<CampaignOutlinedIcon />}
+              variant="outlined"
+            >
+              もう一度読む
+            </Button>
+            <Button
+              onClick={() => {
+                setAudioEnabled((previous) => !previous);
+              }}
+              startIcon={audioEnabled ? <VolumeOffOutlinedIcon /> : <CampaignOutlinedIcon />}
+              variant="outlined"
+            >
+              {audioEnabled ? '音声をオフにする' : '音声をオンにする'}
+            </Button>
+            <Button onClick={onRetake} startIcon={<ReplayOutlinedIcon />} variant="outlined">
+              撮り直す
+            </Button>
+            <Button
+              disabled={!mainResult || !canSaveHistory || isAnalyzing || isSaving}
+              onClick={handleSave}
+              startIcon={<Inventory2OutlinedIcon />}
+              variant="contained"
+            >
+              {!canSaveHistory ? 'この端末では保存できません' : isSaving ? '記録しています' : '3. この端末に保存'}
+            </Button>
+          </Stack>
+        </Stack>
       </Paper>
-    </Box>
+    </Stack>
   );
-};
+}
 
 export default ColorAnalyzer;
