@@ -1,19 +1,17 @@
 import { Suspense, lazy } from 'react';
-import { Link as RouterLink, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
+import { Link as RouterLink, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import {
-  Alert,
   Box,
   Button,
   CircularProgress,
   Container,
   CssBaseline,
-  Paper,
   Stack,
   Typography,
 } from '@mui/material';
 import { ThemeProvider, createTheme, responsiveFontSizes } from '@mui/material/styles';
 import HistoryOutlinedIcon from '@mui/icons-material/HistoryOutlined';
-import CameraAltOutlinedIcon from '@mui/icons-material/CameraAltOutlined';
+import VisibilityOutlinedIcon from '@mui/icons-material/VisibilityOutlined';
 
 import CameraView from './components/CameraView';
 import { isLocalHistorySupported } from './services/localHistory';
@@ -24,41 +22,50 @@ let appTheme = createTheme({
   palette: {
     mode: 'light',
     primary: {
-      main: '#156f5b',
-      dark: '#0f5645',
-      contrastText: '#ffffff',
+      main: '#005A46',
+      dark: '#00382C',
+      contrastText: '#FFFFFF',
     },
     secondary: {
-      main: '#f2a65a',
-      dark: '#c67a2a',
+      main: '#D47B1F',
+      dark: '#9B5413',
+      contrastText: '#102533',
     },
     background: {
-      default: '#f7f2e8',
-      paper: 'rgba(255, 255, 255, 0.92)',
+      default: '#FFF7EF',
+      paper: '#FFFFFF',
     },
     text: {
-      primary: '#21313c',
-      secondary: '#4d5d65',
+      primary: '#102533',
+      secondary: '#355064',
+    },
+    warning: {
+      main: '#B25C00',
     },
   },
   shape: {
-    borderRadius: 24,
+    borderRadius: 20,
   },
   typography: {
     fontFamily: '"Noto Sans JP", sans-serif',
     h1: {
-      fontSize: 'clamp(2.2rem, 4vw, 3.6rem)',
+      fontSize: 'clamp(2.2rem, 5vw, 3.8rem)',
       fontWeight: 900,
-      lineHeight: 1.15,
+      lineHeight: 1.08,
     },
     h2: {
-      fontSize: 'clamp(1.8rem, 3vw, 2.5rem)',
+      fontSize: 'clamp(1.8rem, 3vw, 2.6rem)',
       fontWeight: 800,
       lineHeight: 1.2,
     },
     h3: {
-      fontSize: 'clamp(1.5rem, 2.5vw, 2rem)',
+      fontSize: 'clamp(1.35rem, 2.4vw, 1.9rem)',
       fontWeight: 800,
+      lineHeight: 1.3,
+    },
+    body1: {
+      fontSize: 'clamp(1.05rem, 1.3vw, 1.18rem)',
+      lineHeight: 1.7,
     },
     button: {
       fontSize: '1.1rem',
@@ -71,17 +78,26 @@ let appTheme = createTheme({
       styleOverrides: {
         root: {
           borderRadius: 18,
-          minHeight: 56,
-          paddingInline: 20,
+          minHeight: 64,
+          paddingInline: 24,
+        },
+        contained: {
+          boxShadow: 'none',
         },
       },
     },
     MuiPaper: {
       styleOverrides: {
         root: {
-          backdropFilter: 'blur(12px)',
-          border: '1px solid rgba(33, 49, 60, 0.08)',
-          boxShadow: '0 18px 45px rgba(60, 72, 82, 0.08)',
+          border: '2px solid rgba(16, 37, 51, 0.08)',
+          boxShadow: '0 16px 36px rgba(16, 37, 51, 0.08)',
+        },
+      },
+    },
+    MuiAlert: {
+      styleOverrides: {
+        root: {
+          borderRadius: 20,
         },
       },
     },
@@ -91,77 +107,95 @@ let appTheme = createTheme({
 appTheme = responsiveFontSizes(appTheme);
 
 function App() {
-  const canSaveHistory = isLocalHistorySupported();
   const location = useLocation();
-  const navigate = useNavigate();
+  const isHistoryPage = location.pathname === '/history';
 
   return (
     <ThemeProvider theme={appTheme}>
       <CssBaseline />
-      <Box sx={{ minHeight: '100vh', pb: 6, pt: { xs: 3, md: 5 } }}>
-        <Container maxWidth="lg">
+      <Box
+        component="a"
+        href="#main-content"
+        sx={{
+          '&:focus': {
+            left: 16,
+            top: 16,
+          },
+          backgroundColor: 'primary.dark',
+          borderRadius: 2,
+          color: '#FFFFFF',
+          left: -9999,
+          p: 1.5,
+          position: 'absolute',
+          top: -9999,
+          zIndex: 2000,
+        }}
+      >
+        本文へ移動
+      </Box>
+
+      <Box
+        sx={{
+          background:
+            'linear-gradient(180deg, rgba(255,247,239,1) 0%, rgba(250,242,231,1) 100%)',
+          minHeight: '100vh',
+          pb: { xs: 10, md: 6 },
+          pt: { xs: 2, md: 4 },
+        }}
+      >
+        <Container maxWidth="md">
           <Stack spacing={3}>
-            <Paper sx={{ overflow: 'hidden', p: { xs: 3, md: 4 } }}>
-              <Stack spacing={2.5}>
-                <Typography component="h1" variant="h1">
-                  ぬの しわけ サポート
-                </Typography>
-                <Typography color="text.secondary" sx={{ fontSize: '1.15rem', maxWidth: 720 }}>
-                  色の見分けがむずかしいときに、写真からしわけ先を大きく案内します。操作は
-                  3 ステップだけです。
-                </Typography>
-                <Stack
-                  alignItems={{ sm: 'center' }}
-                  direction={{ xs: 'column', sm: 'row' }}
-                  spacing={1.5}
-                >
-                  <Button
-                    color={location.pathname === '/history' ? 'secondary' : 'primary'}
-                    component={RouterLink}
-                    startIcon={
-                      location.pathname === '/history' ? (
-                        <CameraAltOutlinedIcon />
-                      ) : (
-                        <HistoryOutlinedIcon />
-                      )
-                    }
-                    to={location.pathname === '/history' ? '/' : '/history'}
-                    variant="contained"
-                  >
-                    {location.pathname === '/history' ? 'しわけ画面へ戻る' : '最近の記録を見る'}
-                  </Button>
-                  <Typography color="text.secondary">
-                    記録はこの端末の中だけに残ります。必要なときだけ書き出して持ち出せます。
-                  </Typography>
-                </Stack>
-              </Stack>
-            </Paper>
-
-            {!canSaveHistory && (
-              <Alert severity="warning" sx={{ borderRadius: 4 }}>
-                このブラウザでは端末内の記録保存が使えません。仕分け案内だけ利用できます。
-              </Alert>
-            )}
-
-            <Suspense
-              fallback={
-                <Paper sx={{ p: 4 }}>
-                  <Stack alignItems="center" spacing={2}>
-                    <CircularProgress size={52} />
-                    <Typography variant="h3">記録画面を準備しています</Typography>
-                  </Stack>
-                </Paper>
-              }
+            <Stack
+              component="header"
+              direction="row"
+              spacing={2}
+              sx={{ alignItems: 'center', justifyContent: 'space-between', px: { xs: 0.5, md: 0 } }}
             >
-              <Routes>
-                <Route
-                  element={<CameraView canSaveHistory={canSaveHistory} onSaved={() => navigate('/history')} />}
-                  path="/"
-                />
-                <Route element={<FabricGallery />} path="/history" />
-                <Route element={<Navigate replace to="/" />} path="*" />
-              </Routes>
-            </Suspense>
+              <Typography component="h1" variant="h2">
+                ぬの 色よみ サポート
+              </Typography>
+
+              <Button
+                color={isHistoryPage ? 'secondary' : 'primary'}
+                component={RouterLink}
+                startIcon={isHistoryPage ? <VisibilityOutlinedIcon /> : <HistoryOutlinedIcon />}
+                sx={{ minHeight: 48, minWidth: 'auto', px: 1.75 }}
+                to={isHistoryPage ? '/' : '/history'}
+                variant="text"
+              >
+                {isHistoryPage ? 'もどる' : '記録'}
+              </Button>
+            </Stack>
+
+            <Box component="main" id="main-content">
+              <Suspense
+                fallback={
+                  <Box
+                    sx={{
+                      alignItems: 'center',
+                      backgroundColor: 'background.paper',
+                      border: '2px solid rgba(16, 37, 51, 0.08)',
+                      borderRadius: 5,
+                      display: 'flex',
+                      justifyContent: 'center',
+                      minHeight: 240,
+                      p: 4,
+                    }}
+                  >
+                    <Stack alignItems="center" spacing={2}>
+                      <CircularProgress aria-hidden="true" size={52} />
+                      <Typography variant="h3">画面を準備しています</Typography>
+                    </Stack>
+                  </Box>
+                }
+              >
+                <Routes>
+                  <Route element={<CameraView canSaveHistory={isLocalHistorySupported()} />} path="/" />
+                  <Route element={<FabricGallery />} path="/history" />
+                  <Route element={<Navigate replace to="/" />} path="*" />
+                </Routes>
+              </Suspense>
+            </Box>
           </Stack>
         </Container>
       </Box>

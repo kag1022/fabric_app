@@ -1,9 +1,9 @@
 :root {
-  --page-bg: #f7f2e8;
-  --page-accent: rgba(21, 111, 91, 0.1);
-  --page-accent-soft: rgba(242, 166, 90, 0.14);
-  --text-main: #21313c;
-  --focus-ring: #156f5b;
+  --page-bg: #fff7ef;
+  --page-accent: rgba(0, 90, 70, 0.08);
+  --page-accent-soft: rgba(212, 123, 31, 0.12);
+  --text-main: #102533;
+  --focus-ring: #005a46;
 }
 
 *,
@@ -14,6 +14,8 @@
 
 html {
   background: var(--page-bg);
+  color-scheme: light;
+  scroll-padding-top: 24px;
 }
 
 body {
@@ -25,8 +27,10 @@ body {
     linear-gradient(180deg, #fbf7f0 0%, #f7f2e8 100%);
   color: var(--text-main);
   font-family: 'Noto Sans JP', sans-serif;
+  line-height: 1.6;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
 }
 
 #root {
@@ -43,6 +47,10 @@ select {
 :focus-visible {
   outline: 4px solid var(--focus-ring);
   outline-offset: 3px;
+}
+
+img {
+  max-width: 100%;
 }
 
 @media (prefers-reduced-motion: reduce) {

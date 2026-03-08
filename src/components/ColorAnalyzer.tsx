@@ -1,30 +1,21 @@
 import { useEffect, useEffectEvent, useRef, useState } from 'react';
-import {
-  Alert,
-  Box,
-  Button,
-  CircularProgress,
-  Paper,
-  Stack,
-  Typography,
-} from '@mui/material';
+import { Alert, Box, Button, CircularProgress, Paper, Stack, Typography } from '@mui/material';
 import CampaignOutlinedIcon from '@mui/icons-material/CampaignOutlined';
-import Inventory2OutlinedIcon from '@mui/icons-material/Inventory2Outlined';
+import SaveOutlinedIcon from '@mui/icons-material/SaveOutlined';
 import ReplayOutlinedIcon from '@mui/icons-material/ReplayOutlined';
 import VolumeOffOutlinedIcon from '@mui/icons-material/VolumeOffOutlined';
+import VolumeUpOutlinedIcon from '@mui/icons-material/VolumeUpOutlined';
 
 import { saveLocalFabricCapture } from '../services/localHistory';
-import { buildFabricGuidance } from '../utils/fabricGuidance';
 import { getDominantColors } from '../utils/colorClustering';
+import { buildColorGuidance } from '../utils/colorGuidance';
 import {
   classifyHue,
   classifySaturation,
   classifyValue,
-  getGroupName,
   rgbToHsv,
   type ColorAnalysisResult,
 } from '../utils/colorUtils';
-import StepProgress from './StepProgress';
 
 interface ColorAnalyzerProps {
   canSaveHistory: boolean;
@@ -40,6 +31,7 @@ function ColorAnalyzer({ canSaveHistory, imageDataUrl, onRetake, onSaved }: Colo
   const [audioEnabled, setAudioEnabled] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const imageRef = useRef<HTMLImageElement>(null);
+  const resultCardRef = useRef<HTMLDivElement>(null);
 
   const announceResult = useEffectEvent((message: string) => {
     if (
@@ -77,7 +69,7 @@ function ColorAnalyzer({ canSaveHistory, imageDataUrl, onRetake, onSaved }: Colo
 
   const analyzeColor = () => {
     if (!imageRef.current || !imageRef.current.complete || imageRef.current.naturalWidth === 0) {
-      setError('画像の読み込みに失敗しました。もう一度撮影してください。');
+      setError('画像を読みこめませんでした。もう一度とってください。');
       setIsAnalyzing(false);
       return;
     }
@@ -97,8 +89,8 @@ function ColorAnalyzer({ canSaveHistory, imageDataUrl, onRetake, onSaved }: Colo
 
       const startX = Math.floor(image.naturalWidth * 0.05);
       const startY = Math.floor(image.naturalHeight * 0.05);
-      const sampleWidth = Math.floor(image.naturalWidth * 0.9);
-      const sampleHeight = Math.floor(image.naturalHeight * 0.9);
+      const sampleWidth = Math.max(1, image.naturalWidth - startX * 2);
+      const sampleHeight = Math.max(1, image.naturalHeight - startY * 2);
       const imageData = context.getImageData(startX, startY, sampleWidth, sampleHeight);
       const dominantColors = getDominantColors(imageData.data, 5);
 
@@ -110,15 +102,13 @@ function ColorAnalyzer({ canSaveHistory, imageDataUrl, onRetake, onSaved }: Colo
         const hsv = rgbToHsv(color.r, color.g, color.b);
         const saturationInfo = classifySaturation(hsv.s);
         const hueInfo =
-          saturationInfo.name === '無彩色'
-            ? { category: 0, name: '無彩色' }
+          saturationInfo.name === '色が少ない'
+            ? { category: 0, name: 'グレー系' }
             : classifyHue(hsv.h);
         const valueInfo = classifyValue(hsv.s, hsv.v);
-        const group = getGroupName(hueInfo, valueInfo, saturationInfo);
 
         return {
           dominantRgb: color,
-          group,
           hsv,
           hueInfo,
           saturationInfo,
@@ -130,26 +120,41 @@ function ColorAnalyzer({ canSaveHistory, imageDataUrl, onRetake, onSaved }: Colo
       setError(null);
     } catch (analysisError) {
       console.error('Color analysis failed.', analysisError);
-      setError('色の分析に失敗しました。もう一度撮影してください。');
+      setError('色を読みとれませんでした。もう一度とってください。');
     } finally {
       setIsAnalyzing(false);
     }
   };
 
   const mainResult = analysisResults[0] ?? null;
-  const guidance = mainResult ? buildFabricGuidance(mainResult) : null;
-  const speechText = guidance?.speechText ?? null;
+  const guidance = mainResult ? buildColorGuidance(mainResult) : null;
 
   useEffect(() => {
-    if (speechText) {
-      announceResult(speechText);
+    if (guidance?.speechText) {
+      announceResult(guidance.speechText);
     }
-  }, [announceResult, speechText]);
+  }, [announceResult, guidance]);
+
+  useEffect(() => {
+    if (guidance && !isAnalyzing) {
+      resultCardRef.current?.focus();
+    }
+  }, [guidance, isAnalyzing]);
 
   const handleReplaySpeech = () => {
     if (guidance) {
       announceResult(guidance.speechText);
     }
+  };
+
+  const handleAudioToggle = () => {
+    setAudioEnabled((previous) => {
+      if (previous && typeof window !== 'undefined' && typeof window.speechSynthesis !== 'undefined') {
+        window.speechSynthesis.cancel();
+      }
+
+      return !previous;
+    });
   };
 
   const handleSave = async () => {
@@ -165,28 +170,19 @@ function ColorAnalyzer({ canSaveHistory, imageDataUrl, onRetake, onSaved }: Colo
       onSaved();
     } catch (saveError) {
       console.error('Failed to save the local fabric record.', saveError);
-      setError('記録に失敗しました。このブラウザの保存設定を確認してください。');
+      setError('保存できませんでした。ブラウザの設定を確認してください。');
       setIsSaving(false);
     }
   };
 
   return (
     <Stack spacing={3}>
-      <StepProgress activeStep={isSaving ? 2 : 1} />
-
-      <Paper sx={{ p: { xs: 2.5, md: 3.5 } }}>
-        <Stack spacing={3}>
-          <Box>
-            <Typography variant="h2">2. たしかめる</Typography>
-            <Typography color="text.secondary" sx={{ mt: 1 }}>
-              色の名前と、しまうグループを大きく表示します。
-            </Typography>
-          </Box>
-
+      <Paper component="section" aria-label="結果の確認" sx={{ p: { xs: 2, md: 2.5 } }}>
+        <Stack spacing={2}>
           <img
             alt="分析する布の写真"
             onError={() => {
-              setError('画像の読み込みに失敗しました。');
+              setError('画像を読みこめませんでした。もう一度とってください。');
               setIsAnalyzing(false);
             }}
             onLoad={analyzeColor}
@@ -195,123 +191,202 @@ function ColorAnalyzer({ canSaveHistory, imageDataUrl, onRetake, onSaved }: Colo
             style={{ display: 'none' }}
           />
 
-          <Box
-            component="img"
-            src={imageDataUrl}
-            alt="撮影した布"
-            sx={{
-              aspectRatio: '4 / 3',
-              borderRadius: 4,
-              objectFit: 'cover',
-              width: '100%',
-            }}
-          />
-
-          {isAnalyzing && (
-            <Box
-              aria-live="polite"
-              sx={{
-                alignItems: 'center',
-                backgroundColor: 'rgba(21, 111, 91, 0.08)',
-                borderRadius: 4,
-                display: 'flex',
-                flexDirection: 'column',
-                gap: 2,
-                justifyContent: 'center',
-                minHeight: 220,
-              }}
-            >
-              <CircularProgress size={56} />
-              <Typography variant="h3">色をみています</Typography>
-            </Box>
-          )}
-
-          {error && (
-            <Alert severity="error" sx={{ borderRadius: 3 }}>
-              {error}
-            </Alert>
-          )}
+          {error && <Alert severity="error">{error}</Alert>}
 
           {!canSaveHistory && (
-            <Alert severity="info" sx={{ borderRadius: 3 }}>
-              このブラウザでは記録保存が使えません。仕分け案内だけ利用できます。
-            </Alert>
+            <Alert severity="info">このブラウザでは保存できません。色を読むことはできます。</Alert>
           )}
 
-          {mainResult && !isAnalyzing && guidance && (
-            <Stack spacing={2.5}>
+          <Box
+            sx={{
+              display: 'grid',
+              gap: 2,
+              gridTemplateColumns: {
+                xs: '1fr',
+                md: 'minmax(280px, 0.92fr) minmax(0, 1.08fr)',
+              },
+            }}
+          >
+            {isAnalyzing ? (
               <Paper
-                aria-live="assertive"
+                aria-live="polite"
+                role="status"
                 sx={{
-                  background:
-                    'linear-gradient(160deg, rgba(21,111,91,0.92), rgba(15,86,69,0.92))',
-                  color: '#ffffff',
-                  p: { xs: 2.5, md: 3 },
+                  alignItems: 'center',
+                  display: 'flex',
+                  justifyContent: 'center',
+                  minHeight: 320,
+                  order: { xs: 1, md: 2 },
+                  p: 4,
                 }}
               >
-                <Stack spacing={1.5}>
-                  <Typography sx={{ fontSize: '1rem', fontWeight: 700 }}>しわけ先</Typography>
-                  <Typography sx={{ fontSize: 'clamp(2.3rem, 5vw, 4rem)', fontWeight: 900 }}>
-                    {guidance.supportCode}
-                  </Typography>
-                  <Typography sx={{ fontSize: '1.5rem', fontWeight: 800 }}>
-                    {guidance.headline}
-                  </Typography>
-                  <Typography sx={{ fontSize: '1.2rem' }}>{guidance.instruction}</Typography>
+                <Stack alignItems="center" spacing={2}>
+                  <CircularProgress aria-hidden="true" size={56} />
+                  <Typography variant="h3">色を読んでいます</Typography>
+                  <Typography color="text.secondary">少し待つと結果が出ます。</Typography>
                 </Stack>
               </Paper>
-
-              <Stack
-                direction={{ xs: 'column', md: 'row' }}
-                spacing={2}
-                sx={{ alignItems: { md: 'stretch' } }}
-              >
+            ) : (
+              guidance && (
                 <Paper
+                  aria-live="polite"
+                  ref={resultCardRef}
+                  role="status"
                   sx={{
-                    alignItems: 'center',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: 1.5,
-                    justifyContent: 'center',
-                    minHeight: 150,
-                    p: 2,
-                    width: { xs: '100%', md: 200 },
+                    background: 'linear-gradient(180deg, #005A46 0%, #00382C 100%)',
+                    color: '#FFFFFF',
+                    minHeight: 320,
+                    order: { xs: 1, md: 2 },
+                    p: { xs: 2.5, md: 3.5 },
                   }}
+                  tabIndex={-1}
                 >
-                  <Typography fontWeight={800}>参考色</Typography>
-                  <Box
-                    aria-hidden="true"
-                    sx={{
-                      backgroundColor: `rgb(${mainResult.dominantRgb.r}, ${mainResult.dominantRgb.g}, ${mainResult.dominantRgb.b})`,
-                      border: '3px solid rgba(33, 49, 60, 0.1)',
-                      borderRadius: 4,
-                      height: 88,
-                      width: 88,
-                    }}
-                  />
-                </Paper>
+                  <Stack spacing={2.5}>
+                    <Box>
+                      <Typography sx={{ fontSize: '1rem', fontWeight: 800, opacity: 0.9 }}>色</Typography>
+                      <Typography
+                        component="p"
+                        sx={{
+                          fontSize: 'clamp(3.2rem, 10vw, 5.3rem)',
+                          fontWeight: 900,
+                          letterSpacing: '0.02em',
+                          lineHeight: 1.05,
+                          mt: 1,
+                        }}
+                      >
+                        {guidance.headline}
+                      </Typography>
+                      <Typography
+                        component="p"
+                        sx={{ fontSize: 'clamp(1.4rem, 3vw, 1.9rem)', fontWeight: 800, mt: 1 }}
+                      >
+                        色は {guidance.headline} です
+                      </Typography>
+                    </Box>
 
-                <Paper sx={{ flexGrow: 1, p: 2.5 }}>
-                  <Stack spacing={1.25}>
-                    <Typography fontWeight={800}>読み取り結果</Typography>
-                    <Typography sx={{ fontSize: '1.15rem' }}>
-                      色の名前: <strong>{mainResult.hueInfo.name}</strong>
-                    </Typography>
-                    <Typography sx={{ fontSize: '1.15rem' }}>
-                      明るさ: <strong>{mainResult.valueInfo.name}</strong>
-                    </Typography>
-                    <Typography sx={{ fontSize: '1.15rem' }}>
-                      鮮やかさ: <strong>{mainResult.saturationInfo.name}</strong>
-                    </Typography>
+                    <Paper
+                      sx={{
+                        backgroundColor: 'rgba(255, 255, 255, 0.12)',
+                        border: '1px solid rgba(255, 255, 255, 0.18)',
+                        boxShadow: 'none',
+                        color: '#FFFFFF',
+                        p: 2,
+                      }}
+                    >
+                      <Typography sx={{ fontSize: '1.2rem', fontWeight: 700 }}>
+                        {guidance.detailLine}
+                      </Typography>
+                    </Paper>
+
+                    <Stack
+                      direction="row"
+                      spacing={1.5}
+                      sx={{ alignItems: 'center', justifyContent: 'space-between' }}
+                    >
+                      <Typography sx={{ fontSize: '1rem', fontWeight: 700 }}>
+                        文字と音で確かめてください
+                      </Typography>
+                      <Box
+                        aria-hidden="true"
+                        sx={{
+                          backgroundColor: `rgb(${mainResult.dominantRgb.r}, ${mainResult.dominantRgb.g}, ${mainResult.dominantRgb.b})`,
+                          border: '2px solid rgba(255, 255, 255, 0.4)',
+                          borderRadius: 3,
+                          height: 56,
+                          minWidth: 56,
+                        }}
+                      />
+                    </Stack>
+
+                    <Box component="dl" sx={{ display: 'grid', gap: 1.25, m: 0 }}>
+                      <Box
+                        sx={{
+                          alignItems: 'center',
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          gap: 2,
+                        }}
+                      >
+                        <Typography component="dt" sx={{ fontSize: '1.05rem', fontWeight: 700, m: 0 }}>
+                          明るさ
+                        </Typography>
+                        <Typography component="dd" sx={{ fontSize: '1.25rem', fontWeight: 900, m: 0 }}>
+                          {mainResult?.valueInfo.name}
+                        </Typography>
+                      </Box>
+                      <Box
+                        sx={{
+                          alignItems: 'center',
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          gap: 2,
+                        }}
+                      >
+                        <Typography component="dt" sx={{ fontSize: '1.05rem', fontWeight: 700, m: 0 }}>
+                          色のつよさ
+                        </Typography>
+                        <Typography component="dd" sx={{ fontSize: '1.25rem', fontWeight: 900, m: 0 }}>
+                          {mainResult?.saturationInfo.name}
+                        </Typography>
+                      </Box>
+                    </Box>
                   </Stack>
                 </Paper>
-              </Stack>
-            </Stack>
-          )}
+              )
+            )}
+
+            <Paper
+              sx={{
+                order: { xs: 2, md: 1 },
+                overflow: 'hidden',
+                p: { xs: 1.5, md: 2 },
+              }}
+            >
+              <Box
+                component="img"
+                src={imageDataUrl}
+                alt="撮影した布"
+                sx={{
+                  aspectRatio: '4 / 3',
+                  borderRadius: 3,
+                  objectFit: 'cover',
+                  width: '100%',
+                }}
+              />
+            </Paper>
+          </Box>
+        </Stack>
+      </Paper>
+
+      <Paper
+        component="section"
+        aria-label="結果の操作"
+        sx={{
+          bottom: { xs: 12, md: 20 },
+          p: { xs: 2, md: 2.5 },
+          position: 'sticky',
+          zIndex: 5,
+        }}
+      >
+        <Stack spacing={1.5}>
+          <Button
+            disabled={!mainResult || !canSaveHistory || isAnalyzing || isSaving}
+            fullWidth
+            onClick={handleSave}
+            size="large"
+            startIcon={<SaveOutlinedIcon />}
+            variant="contained"
+          >
+            {!canSaveHistory ? '保存できません' : isSaving ? '保存しています' : '保存して次へ'}
+          </Button>
 
           <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5}>
+            <Button fullWidth onClick={onRetake} startIcon={<ReplayOutlinedIcon />} variant="outlined">
+              撮り直す
+            </Button>
             <Button
               disabled={!guidance}
+              fullWidth
               onClick={handleReplaySpeech}
               startIcon={<CampaignOutlinedIcon />}
               variant="outlined"
@@ -319,24 +394,12 @@ function ColorAnalyzer({ canSaveHistory, imageDataUrl, onRetake, onSaved }: Colo
               もう一度読む
             </Button>
             <Button
-              onClick={() => {
-                setAudioEnabled((previous) => !previous);
-              }}
-              startIcon={audioEnabled ? <VolumeOffOutlinedIcon /> : <CampaignOutlinedIcon />}
+              fullWidth
+              onClick={handleAudioToggle}
+              startIcon={audioEnabled ? <VolumeOffOutlinedIcon /> : <VolumeUpOutlinedIcon />}
               variant="outlined"
             >
-              {audioEnabled ? '音声をオフにする' : '音声をオンにする'}
-            </Button>
-            <Button onClick={onRetake} startIcon={<ReplayOutlinedIcon />} variant="outlined">
-              撮り直す
-            </Button>
-            <Button
-              disabled={!mainResult || !canSaveHistory || isAnalyzing || isSaving}
-              onClick={handleSave}
-              startIcon={<Inventory2OutlinedIcon />}
-              variant="contained"
-            >
-              {!canSaveHistory ? 'この端末では保存できません' : isSaving ? '記録しています' : '3. この端末に保存'}
+              {audioEnabled ? '音を止める' : '音を出す'}
             </Button>
           </Stack>
         </Stack>

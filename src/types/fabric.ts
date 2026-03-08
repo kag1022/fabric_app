@@ -11,7 +11,7 @@ export interface LocalExportRecord extends Omit<LocalFabricRecord, 'previewBlob'
 }
 
 export interface FabricHistoryExport {
-  version: 1;
+  version: 2;
   exportedAt: string;
   records: LocalExportRecord[];
 }
