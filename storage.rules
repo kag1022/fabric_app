@@ -1,0 +1,20 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /fabrics/{userId}/{allPaths=**} {
+      allow read, delete: if request.auth != null && request.auth.uid == userId;
+      
+      // Allow write if:
+      // 1. Authenticated and Owner
+      // 2. Not restricted by upload rate limit (firestore flag)
+      // 3. File size < 5MB
+      // 4. Content Type is image/jpeg
+      allow create: if request.auth != null && request.auth.uid == userId
+                   && (!firestore.exists(/databases/(default)/documents/users/$(userId)) 
+                       || !firestore.get(/databases/(default)/documents/users/$(userId)).data.uploadRestricted)
+                   && request.resource.size < 5 * 1024 * 1024
+                   && request.resource.contentType == 'image/jpeg';
+    }
+  }
+}
