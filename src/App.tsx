@@ -228,6 +228,7 @@ function App() {
           </Stack>
         </Container>
       </Box>
+      <Analytics />
       <SpeedInsights />
       <Analytics />
     </ThemeProvider>
